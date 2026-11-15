@@ -1,0 +1,21 @@
+README.md
+  s_6208c722798bf1::t_2cdd5969fd3214 17,54-56
+internal/web/ui/index.html
+  s_6208c722798bf1::t_7baaa129e2a2b5 136-194,224,500,502-506,508-514,517-551,553-566,569,571-589,591-597,600-610,618-623
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b4bea9a69e9908c48bc0ed74db799d007d23c8f7",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "unknown"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
