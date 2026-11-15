@@ -16,9 +16,9 @@ const DecisionTool = "record_decision"
 
 // DecisionInput is what an agent passes to record_decision.
 type DecisionInput struct {
-	Title        string   `json:"title" jsonschema:"one line: what was decided"`
+	Title        string   `json:"title" jsonschema:"short headline, at most 8 words, e.g. Rate limit per client IP"`
 	Kind         string   `json:"kind" jsonschema:"architecture, data-model, api, business-rule, dependency, security, performance, testing, quality or other"`
-	Why          string   `json:"why" jsonschema:"the reason, in plain words"`
+	Why          string   `json:"why" jsonschema:"the reason in one or two plain sentences"`
 	Files        []string `json:"files" jsonschema:"files this decision changes"`
 	Alternatives []string `json:"alternatives,omitempty" jsonschema:"options considered and not chosen"`
 	Risk         string   `json:"risk,omitempty" jsonschema:"what could go wrong, if anything"`
@@ -33,6 +33,14 @@ type line struct {
 	IsMeta      bool            `json:"isMeta"`
 	AITitle     string          `json:"aiTitle"`
 	Message     json.RawMessage `json:"message"`
+	Result      json.RawMessage `json:"toolUseResult"`
+}
+
+// writeResult is the part of a Write result that tells a new file from a
+// rewrite of an existing one.
+type writeResult struct {
+	Type         string `json:"type"`
+	OriginalFile string `json:"originalFile"`
 }
 
 type message struct {
@@ -131,8 +139,16 @@ func (b *builder) add(l line) {
 			}
 			b.emit(Event{Time: l.Timestamp, Kind: KindPrompt, Text: t})
 		case l.Type == "user" && bl.Type == "tool_result":
-			if i, ok := b.toolIdx[bl.ToolUseID]; ok && bl.IsError {
+			i, ok := b.toolIdx[bl.ToolUseID]
+			if !ok {
+				continue
+			}
+			if bl.IsError {
 				s.Events[i].Failed = true
+			}
+			var wr writeResult
+			if e := &s.Events[i]; e.Tool == "Write" && json.Unmarshal(l.Result, &wr) == nil && wr.Type == "update" {
+				e.NewFile, e.Before = false, wr.OriginalFile
 			}
 		case l.Type == "assistant" && bl.Type == "text":
 			if t := strings.TrimSpace(bl.Text); t != "" {

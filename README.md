@@ -4,14 +4,18 @@
 
 AI agents now write code faster than people can review it. A 2,000-line diff hides the things a reviewer
 actually needs to judge: *it added a cache here, it changed the refund rule, it pulled in a new library.*
-grasp turns an agent's session into those decisions, shows them as an animated graph you can replay, lets
-reviewers approve, reject or comment on each one, and hands the verdicts back to the agent.
+grasp turns an agent's session into those decisions and shows them **one at a time**: a short headline, one
+sentence of why, a picture of the files it touched, and two big buttons. Rejections go back to the agent.
 
 ![grasp review page](docs/img/review.png)
 
-<details><summary>Watch the replay</summary>
+| Reject with a note for the agent | When you are done |
+|---|---|
+| ![Rejecting a decision](docs/img/reject.png) | ![All decisions reviewed](docs/img/done.png) |
 
-![Replay of a Claude Code session in grasp](docs/img/replay.gif)
+<details><summary><b>Watch</b> mode: the session as one sentence at a time</summary>
+
+![Watch mode](docs/img/watch.gif)
 </details>
 
 ## How it works
@@ -36,8 +40,8 @@ reviewers approve, reject or comment on each one, and hands the verdicts back to
   Files a decision names but never touches are flagged as *unverified claims*.
 - **Works without cooperation too.** If the agent records no decisions, grasp groups edits by what the agent
   said just before making them, and marks those groups as inferred.
-- **Replay.** Watch the session unfold step by step: what you asked, what it decided, which files lit up,
-  which commands failed.
+- **One thing at a time.** Each decision is a card; the code and the full reasoning stay hidden until you
+  ask for them. **Watch** plays the session as one sentence per step.
 - **Closes the loop.** Rejections and comments become instructions the agent reads through
   `get_review_feedback` at the start of its next task.
 
@@ -71,7 +75,7 @@ your team) and `decisions.jsonl` (decisions from agents grasp has no transcript 
 ## Other agents
 
 Any MCP-capable agent can call `record_decision` and `get_review_feedback`; those decisions show up in an
-*agent log* session. Full timelines (edits, commands, replay) currently come from Claude Code transcripts.
+*agent log* session. Full timelines (edits, commands, Watch mode) currently come from Claude Code transcripts.
 Adapters for other agents' logs are welcome.
 
 ## Status

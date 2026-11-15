@@ -7,4 +7,6 @@
 {"type": "assistant", "sessionId": "s1", "cwd": "/repo", "timestamp": "2026-11-15T10:00:06Z", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "c1", "name": "Bash", "input": {"command": "go test ./..."}}]}}
 {"type": "user", "sessionId": "s1", "cwd": "/repo", "timestamp": "2026-11-15T10:00:07Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "c1", "is_error": true, "content": "x"}]}}
 {"type": "assistant", "sessionId": "s1", "cwd": "/repo", "isSidechain": true, "timestamp": "2026-11-15T10:00:08Z", "message": {"content": [{"type": "tool_use", "id": "x", "name": "Edit", "input": {"file_path": "/repo/side.go"}}]}}
+{"type": "assistant", "sessionId": "s1", "cwd": "/repo", "timestamp": "2026-11-15T10:00:09Z", "message": {"content": [{"type": "tool_use", "id": "w2", "name": "Write", "input": {"file_path": "/repo/api/router.go", "content": "package api // new\n"}}]}}
+{"type": "user", "sessionId": "s1", "cwd": "/repo", "timestamp": "2026-11-15T10:00:10Z", "toolUseResult": {"type": "update", "originalFile": "package api // old\n"}, "message": {"content": [{"type": "tool_result", "tool_use_id": "w2", "content": "updated"}]}}
 {"type": "ai-title", "sessionId": "s1", "aiTitle": "Rate limiter"}

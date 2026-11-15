@@ -30,7 +30,7 @@ For a service that runs behind a load balancer that is a real problem, so the re
 
 > Keying by RemoteAddr breaks behind our load balancer; use X-Forwarded-For from the trusted proxy list.
 
-![Rejected decision in grasp](img/review.png)
+![Rejected decision in grasp](img/reject.png)
 
 ## 3. The agent reads the verdict
 

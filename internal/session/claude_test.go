@@ -20,11 +20,14 @@ func TestRecordedDecisionsLinkEdits(t *testing.T) {
 	if d.Kind != "architecture" || !reflect.DeepEqual(d.Files, []string{"api/limit.go", "api/router.go"}) {
 		t.Fatalf("decision = %+v", d)
 	}
-	if len(d.Edits) != 1 || s.Events[d.Edits[0]-1].File != "api/limit.go" {
+	if s.Events[d.Edits[0]-1].File != "api/limit.go" || !s.Events[d.Edits[0]-1].NewFile {
 		t.Fatalf("edits = %v", d.Edits)
 	}
-	if !reflect.DeepEqual(d.Unverified, []string{"api/router.go"}) {
-		t.Fatalf("unverified = %v", d.Unverified)
+	if len(d.Edits) != 2 || len(d.Unverified) != 0 {
+		t.Fatalf("edits = %v, unverified = %v", d.Edits, d.Unverified)
+	}
+	if w := s.Events[d.Edits[1]-1]; w.NewFile || w.Before != "package api // old\n" {
+		t.Fatalf("rewrite read as %+v", w)
 	}
 	if len(s.Unexplained) != 1 || s.Events[s.Unexplained[0]-1].File != "config.yaml" {
 		t.Fatalf("unexplained = %v", s.Unexplained)
