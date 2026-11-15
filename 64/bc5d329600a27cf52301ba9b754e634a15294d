@@ -1,0 +1,30 @@
+internal/web/ui/index.html
+  s_6208c722798bf1::t_efc9cc87a0a3a9 9-11,14-16,19-21,24,26-58,60-108,112-122,126-127,129-130,133-147,149,151,155-159,163,166-172,175-183,186-204,207-217,219-221,224-236,239-240,242-275,278-288,290-301,303,305-346
+  s_6208c722798bf1::t_e7350bd2a27a77 347-354,357-359,361-366,369-370
+docs/example.md
+  s_6208c722798bf1::t_fd9ce8dd8077e8 33
+internal/session/claude.go
+  s_6208c722798bf1::t_978771e76060f9 19,21,36-43,142-146,149-152
+internal/session/claude_test.go
+  s_6208c722798bf1::t_dbb11d50bd6a7e 23,26-30
+testdata/decided.jsonl
+  s_6208c722798bf1::t_74cc0738f67afd 10-11
+README.md
+  s_6208c722798bf1::t_d9b156a65d90de 7-8,12-16,18,43-44,78
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "64bc5d329600a27cf52301ba9b754e634a15294d",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
