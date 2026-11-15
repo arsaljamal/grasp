@@ -14,7 +14,7 @@ Rejections go back to the agent.
 |---|---|
 | ![What changed for users](docs/img/what-changed.png) | ![Rejecting a decision](docs/img/reject.png) |
 
-<details><summary><b>Watch</b> mode: the session as one sentence at a time</summary>
+<details><summary><b>Watch</b> mode: the session as a reel, one animated scene per step</summary>
 
 ![Watch mode](docs/img/watch.gif)
 </details>
@@ -51,7 +51,9 @@ Rejections go back to the agent.
 - **Works without cooperation too.** If the agent records no decisions, grasp groups edits by what the agent
   said just before making them, and marks those groups as inferred.
 - **One thing at a time.** Each decision is a card; the code and the full reasoning stay hidden until you
-  ask for them. **Watch** plays the session as one sentence per step.
+  ask for them. **Watch** plays the session like a reel: story bars on top, one animated scene per step
+  (the request typing out, decision cards flipping in, changed lines sliding in, commands running), with speed
+  control and tap-to-skip.
 - **Closes the loop.** Rejections and comments become instructions the agent reads through
   `get_review_feedback` at the start of its next task.
 
