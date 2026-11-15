@@ -1,0 +1,34 @@
+internal/web/ui/index.html
+  s_6208c722798bf1::t_7334aba305ba4b 122-135,161-163,191-192,194,202,293-301,305-321,327-333,337-340,349-351,397-402,427
+internal/impact/impact_test.go
+  s_6208c722798bf1::t_3fc3c00d1f6ae8 1-64,69,72,75-76,81-82
+  s_6208c722798bf1::t_4d2cfea0bb6160 65-68,70-71,73-74,77-80,83
+internal/store/store.go
+  s_6208c722798bf1::t_94ce40ba79ff2b 39-41,222-236
+  s_6208c722798bf1::t_c0765b299a9f6e 237-239
+internal/web/server.go
+  s_6208c722798bf1::t_94ce40ba79ff2b 15,42,96-100,109,121-129,142-150
+  s_6208c722798bf1::t_ca7a6cb9539131 151-152
+README.md
+  s_6208c722798bf1::t_9921c17e696704 13,42-46
+docs/example.md
+  s_6208c722798bf1::t_ff0a9577dd3c0e 60-69
+internal/impact/impact.go
+  s_6208c722798bf1::t_3eea6440eec483 1-383
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "435ef02df89af3d458166950d31a3e2c3c61bafa",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
