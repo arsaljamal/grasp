@@ -1,0 +1,65 @@
+internal/session/link.go
+  s_6208c722798bf1::t_0840f450d19a0f 10-11
+  s_6208c722798bf1::t_340cef93687cbf 1-9,12-24,26-30,36-39,43-46,48-50,58-138
+  s_6208c722798bf1::t_7ce85a280349b2 25,31-35,40-42,47,51-57
+go.mod
+  s_6208c722798bf1::t_f9c66072facdae 1-16
+internal/mcpserver/server.go
+  s_6208c722798bf1::t_5baf6027d34fc7 1-61
+internal/web/server.go
+  s_6208c722798bf1::t_5eda008ba7fe00 1-185
+internal/session/claude_test.go
+  s_6208c722798bf1::t_0840f450d19a0f 64-88
+  s_6208c722798bf1::t_62f2b80b05406b 1-63
+internal/web/ui/index.html
+  s_6208c722798bf1::t_7d4968915bd8a7 134,323,350-351
+  s_6208c722798bf1::t_dbcde1f331c04b 1-133,135-322,324-349,352-362
+testdata/decided.jsonl
+  s_6208c722798bf1::t_62f2b80b05406b 1-10
+internal/store/store_test.go
+  s_6208c722798bf1::t_62f2b80b05406b 1-43
+cmd/grasp/main.go
+  s_6208c722798bf1::t_a8821ed38cbd96 1-299
+internal/session/claude.go
+  s_6208c722798bf1::t_14625e5ad5e050 1-226
+internal/session/model.go
+  s_6208c722798bf1::t_68a5b1538b7873 1-74
+internal/store/store.go
+  s_6208c722798bf1::t_40c6e9fc5ee661 1-78,85-314
+  s_6208c722798bf1::t_c51524b89409a5 79-84
+README.md
+  s_6208c722798bf1::t_8da95104e4926f 1-85
+testdata/inferred.jsonl
+  s_6208c722798bf1::t_62f2b80b05406b 1-6
+internal/mcpserver/server_test.go
+  s_6208c722798bf1::t_d3ca5daab7547e 19-20
+  s_6208c722798bf1::t_8fa9168ee8c98c 1-18,21-54
+LICENSE
+  s_6208c722798bf1::t_a51ccb12b705df 1-21
+.github/workflows/ci.yml
+  s_6208c722798bf1::t_bf2480a1e517ac 1-15
+.gitignore
+  s_6208c722798bf1::t_cad57186df8a33 1-3
+docs/example.md
+  s_6208c722798bf1::t_ab4d6c46ce4cd6 1-46
+go.sum
+  s_6208c722798bf1::t_286976f30d07e4 1-24
+internal/web/server_test.go
+  s_6208c722798bf1::t_72fe74f97bcdc6 1-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4c572b8fe04adcdf9791d78e925444463ea00159",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
