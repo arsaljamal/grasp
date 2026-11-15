@@ -1,0 +1,362 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>grasp review</title>
+<style>
+:root{
+  --bg:#f6f7f9;--card:#fff;--ink:#16181d;--mute:#5d6470;--line:#dfe3ea;--soft:#eef1f5;
+  --accent:#3b5bdb;--ok:#2b8a3e;--okbg:#e6f4ea;--bad:#c92a2a;--badbg:#fdecec;--warn:#b35c00;--warnbg:#fff3e0;
+  --add:#e6f4ea;--addink:#1e6b30;--del:#fdecec;--delink:#a61e1e;--ghost:.13;
+  --k-architecture:#3b5bdb;--k-data-model:#7048e8;--k-api:#1c7ed6;--k-business-rule:#e8590c;--k-dependency:#0b7285;
+  --k-security:#c92a2a;--k-performance:#2f9e44;--k-testing:#5c940d;--k-quality:#868e96;--k-other:#495057;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101216;--card:#181b21;--ink:#e8eaee;--mute:#9aa2ae;--line:#2a2f38;--soft:#20242c;
+  --accent:#748ffc;--ok:#69db7c;--okbg:#16291b;--bad:#ff8787;--badbg:#341a1a;--warn:#ffa94d;--warnbg:#33240f;
+  --add:#16291b;--addink:#8ce99a;--del:#341a1a;--delink:#ffa8a8;--ghost:.16;
+}}
+:root[data-theme="dark"]{
+  --bg:#101216;--card:#181b21;--ink:#e8eaee;--mute:#9aa2ae;--line:#2a2f38;--soft:#20242c;
+  --accent:#748ffc;--ok:#69db7c;--okbg:#16291b;--bad:#ff8787;--badbg:#341a1a;--warn:#ffa94d;--warnbg:#33240f;
+  --add:#16291b;--addink:#8ce99a;--del:#341a1a;--delink:#ffa8a8;--ghost:.16;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+button,select,input,textarea{font:inherit;color:inherit}
+header{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--card);position:sticky;top:0;z-index:5}
+.logo{font-weight:700;font-size:18px;letter-spacing:-.02em}.logo small{font-weight:400;color:var(--mute);font-size:13px;margin-left:6px}
+select{background:var(--soft);border:1px solid var(--line);border-radius:8px;padding:6px 8px;max-width:340px}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-left:auto}
+.chip{border-radius:999px;padding:3px 10px;background:var(--soft);font-size:12.5px;white-space:nowrap;border:0;cursor:default}
+.chip b{font-weight:650}.chip.ok{background:var(--okbg);color:var(--ok)}.chip.bad{background:var(--badbg);color:var(--bad)}.chip.warn{background:var(--warnbg);color:var(--warn)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:6px 12px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:#fff}.btn.bad{background:var(--bad);border-color:var(--bad);color:#fff}
+.btn:disabled{opacity:.5;cursor:default}
+main{display:grid;grid-template-columns:minmax(0,1fr) 420px;gap:16px;padding:16px;max-width:1500px;margin:0 auto}
+@media (max-width:980px){main{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.graphcard{padding:12px 12px 0;overflow:hidden}
+.cols{display:grid;grid-template-columns:1fr 1.5fr 1fr;font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em;padding:0 4px 6px}
+.cols span:nth-child(2){text-align:center}.cols span:nth-child(3){text-align:right}
+#graph{width:100%;display:block}
+.node{cursor:pointer;transition:opacity .45s}
+.node rect{transition:stroke .3s,stroke-width .3s,fill .3s}
+.node text{fill:var(--ink);font-size:12.5px}
+.node .sub{fill:var(--mute);font-size:11px}
+.node.ghost{opacity:var(--ghost)}
+.node.sel rect.box{stroke:var(--accent)!important;stroke-width:3}
+.node.now rect.box{animation:pulse 1s ease-out}
+@keyframes pulse{0%{filter:drop-shadow(0 0 0 var(--accent))}40%{filter:drop-shadow(0 0 10px var(--accent))}100%{filter:none}}
+.edge{fill:none;stroke:var(--line);stroke-width:1.6;transition:opacity .45s,stroke .3s}
+.edge.hot{stroke:var(--accent);stroke-width:2.4}
+.edge.ghost{opacity:.05}
+.edge.claim{stroke:var(--warn);stroke-dasharray:4 4}
+.edge.draw{stroke-dasharray:600;stroke-dashoffset:600;animation:draw .8s forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.replay{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:10px 4px;border-top:1px solid var(--line);margin-top:6px}
+.replay input[type=range]{flex:1;min-width:140px;accent-color:var(--accent)}
+.step{font-size:12.5px;color:var(--mute);min-width:90px;text-align:right}
+.story{padding:12px 16px;margin-top:16px}
+.story h3,.panel h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--mute)}
+.story ol{list-style:none;margin:0;padding:0;max-height:220px;overflow:auto}
+.story li{padding:6px 8px;border-radius:8px;display:flex;gap:10px;align-items:flex-start;cursor:pointer}
+.story li:hover{background:var(--soft)}
+.story li.cur{background:var(--soft);outline:1px solid var(--accent)}
+.story .ico{width:22px;flex:none;text-align:center}
+.story .t{flex:1;min-width:0;overflow-wrap:anywhere}
+.story .fail{color:var(--bad);font-weight:600}
+.panel{padding:16px;align-self:start;position:sticky;top:72px;max-height:calc(100vh - 88px);overflow:auto}
+.kind{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;color:#fff;margin-right:6px}
+.tag{display:inline-block;border-radius:6px;padding:1px 8px;font-size:12px;margin-right:6px;background:var(--soft);color:var(--mute)}
+.tag.warn{background:var(--warnbg);color:var(--warn)}.tag.ok{background:var(--okbg);color:var(--ok)}.tag.bad{background:var(--badbg);color:var(--bad)}
+.panel h2{font-size:18px;margin:10px 0 12px;line-height:1.3}
+.sec{margin:14px 0}.sec .lbl{font-size:12px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.files{list-style:none;padding:0;margin:0}.files li{padding:3px 0;font-family:ui-monospace,Menlo,monospace;font-size:12.5px;overflow-wrap:anywhere}
+.diff{border:1px solid var(--line);border-radius:8px;margin:8px 0;overflow:hidden}
+.diff .hd{display:flex;justify-content:space-between;gap:8px;padding:5px 10px;background:var(--soft);font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.diff pre{margin:0;padding:6px 0;font:12px/1.45 ui-monospace,Menlo,monospace;overflow:auto;max-height:260px}
+.diff .l{display:block;padding:0 10px;white-space:pre}.diff .a{background:var(--add);color:var(--addink)}.diff .d{background:var(--del);color:var(--delink)}
+.review{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+textarea{width:100%;min-height:70px;border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:8px;resize:vertical;margin:8px 0}
+input.name{border:1px solid var(--line);border-radius:8px;background:var(--soft);padding:5px 8px;width:140px}
+.comment{background:var(--soft);border-radius:8px;padding:8px 10px;margin:6px 0}.comment .who{font-size:12px;color:var(--mute)}
+.help p{margin:0 0 10px;color:var(--mute)}.help b{color:var(--ink)}
+.legend{display:grid;grid-template-columns:auto 1fr;gap:6px 10px;align-items:center;font-size:13px;color:var(--mute)}
+.sw{width:26px;height:14px;border-radius:4px;border:2px solid var(--line)}
+.kbd{font:12px ui-monospace,Menlo,monospace;background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:0 5px}
+dialog{border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);max-width:720px;width:calc(100% - 32px)}
+dialog pre{white-space:pre-wrap;background:var(--soft);padding:12px;border-radius:8px;max-height:60vh;overflow:auto;font-size:12.5px}
+.empty{padding:60px 20px;text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">grasp<small>what your AI did, decision by decision</small></div>
+  <select id="sessions" aria-label="Session"></select>
+  <div class="chips" id="chips"></div>
+  <button class="btn" id="fbBtn" title="Reviewer feedback the agent will read">Feedback for agent</button>
+</header>
+<main>
+  <section>
+    <div class="card graphcard">
+      <div class="cols"><span>Asked</span><span>Decided</span><span>Changed</span></div>
+      <svg id="graph" role="img" aria-label="Decision graph"></svg>
+      <div class="replay">
+        <button class="btn primary" id="play">▶ Replay</button>
+        <select id="speed" aria-label="Speed"><option value="1100">1×</option><option value="550" selected>2×</option><option value="250">4×</option></select>
+        <input type="range" id="scrub" min="0" max="0" value="0" aria-label="Timeline">
+        <span class="step" id="step"></span>
+      </div>
+    </div>
+    <div class="card story">
+      <h3>What happened, step by step</h3>
+      <ol id="story"></ol>
+    </div>
+  </section>
+  <aside class="card panel" id="panel"></aside>
+</main>
+<dialog id="fb"><h3 style="margin-top:0">Feedback the agent reads (get_review_feedback)</h3><pre id="fbText"></pre><div class="row"><button class="btn" id="fbCopy">Copy</button><button class="btn primary" onclick="fb.close()">Close</button></div></dialog>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const UNEXPLAINED = "__unexplained__";
+let S = null, R = {}, sel = null, pos = 0, timer = null, sessionId = "";
+let me = ""; try { me = localStorage.getItem("grasp.name") || ""; } catch {}
+
+async function load(keepPos) {
+  const list = await (await fetch("api/sessions")).json();
+  const box = $("#sessions");
+  if (!list.length) { box.innerHTML = ""; $("#panel").innerHTML = ""; $("#graph").innerHTML = ""; $("#story").innerHTML = "";
+    $("#panel").innerHTML = `<div class="empty">No sessions yet.<br><br>Run <span class="kbd">grasp init</span> and work with Claude Code here,<br>or <span class="kbd">grasp import --latest</span>.</div>`; return; }
+  if (!sessionId || !list.some(s => s.id === sessionId)) sessionId = list[0].id;
+  box.innerHTML = list.map(s => `<option value="${esc(s.id)}" ${s.id===sessionId?"selected":""}>${esc(s.title||s.id)} · ${s.decisions} decisions · ${s.edits} edits</option>`).join("");
+  const res = await (await fetch("api/session?id=" + encodeURIComponent(sessionId))).json();
+  const atEnd = !S || pos >= S.events.length;
+  S = res.session; R = res.reviews || {};
+  S.events = S.events || []; S.decisions = S.decisions || []; S.unexplained = S.unexplained || [];
+  if (!keepPos || atEnd) pos = S.events.length;
+  $("#scrub").max = S.events.length;
+  render();
+}
+
+function verdict(id) { return (R[id] && R[id].verdict) || ""; }
+function nodesFor() {
+  const ev = S.events, byTurn = {};
+  const prompts = ev.filter(e => e.kind === "prompt").map(e => ({ id: "p" + e.turn, turn: e.turn, seq: e.seq, text: e.text }));
+  const decisions = S.decisions.map(d => ({ ...d, nid: "d:" + d.id }));
+  if (S.unexplained.length) {
+    const first = Math.min(...S.unexplained);
+    const files = [...new Set(S.unexplained.map(s => ev[s-1].file))];
+    decisions.push({ id: UNEXPLAINED, nid: "d:" + UNEXPLAINED, seq: first, turn: ev[first-1].turn, title: "Changes with no recorded decision", kind: "other", edits: S.unexplained, files, unexplained: true });
+  }
+  decisions.sort((a, b) => a.seq - b.seq);
+  const files = [], seen = {};
+  for (const e of ev) if (e.kind === "edit" && !seen[e.file]) { seen[e.file] = { id: "f:" + e.file, file: e.file, seq: e.seq, edits: 0 }; files.push(seen[e.file]); }
+  for (const e of ev) if (e.kind === "edit") seen[e.file].edits++;
+  for (const d of decisions) for (const f of (d.unverified || [])) if (!seen[f]) { seen[f] = { id: "f:" + f, file: f, seq: d.seq, edits: 0, claimOnly: true }; files.push(seen[f]); }
+  return { prompts, decisions, files };
+}
+
+// shown(seq): has the replay reached this step yet?
+const shown = seq => seq <= pos;
+
+function render() {
+  const { prompts, decisions, files } = nodesFor();
+  const W = 960, rowH = 58, top = 14;
+  const H = Math.max(prompts.length, decisions.length, files.length, 3) * rowH + top * 2;
+  const svg = $("#graph");
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  const xs = { p: 6, pw: 230, d: 300, dw: 360, f: 724, fw: 230 };
+  const place = (arr, n) => arr.forEach((o, i) => o.y = top + (H - top*2) * (i + .5) / n);
+  place(prompts, prompts.length); place(decisions, decisions.length); place(files, files.length);
+  const cur = S.events[pos - 1];
+  const curD = cur && (cur.decision_id || (cur.kind === "edit" && S.unexplained.includes(cur.seq) ? UNEXPLAINED : ""));
+  let out = "";
+  const edge = (x1, y1, x2, y2, cls) => { const m = (x1 + x2) / 2; return `<path class="edge ${cls}" d="M${x1},${y1} C${m},${y1} ${m},${y2} ${x2},${y2}"/>`; };
+  // prompt -> decision edges
+  for (const d of decisions) { const p = prompts.find(p => p.turn === d.turn); if (!p) continue;
+    const vis = shown(d.seq), hot = sel === d.id || (curD === d.id);
+    out += edge(xs.p + xs.pw, p.y, xs.d, d.y, (vis ? "" : "ghost ") + (hot ? "hot " : "") + (cur && cur.seq === d.seq ? "draw" : "")); }
+  // decision -> file edges, one per file, visible once the first linking edit is reached
+  for (const d of decisions) {
+    const fset = {};
+    for (const s of (d.edits || [])) { const e = S.events[s-1]; (fset[e.file] = fset[e.file] || []).push(s); }
+    for (const [f, seqs] of Object.entries(fset)) { const fn = files.find(x => x.file === f); if (!fn) continue;
+      const first = Math.min(...seqs), vis = shown(first), hot = sel === d.id || (cur && cur.kind === "edit" && cur.file === f && curD === d.id);
+      out += edge(xs.d + xs.dw, d.y, xs.f, fn.y, (vis ? "" : "ghost ") + (hot ? "hot " : "") + (cur && seqs.includes(cur.seq) ? "draw" : "")); }
+    for (const f of (d.unverified || [])) { const fn = files.find(x => x.file === f); if (fn) out += edge(xs.d + xs.dw, d.y, xs.f, fn.y, "claim " + (shown(d.seq) ? "" : "ghost")); }
+  }
+  // prompt nodes
+  for (const p of prompts) {
+    const now = cur && cur.kind === "prompt" && cur.turn === p.turn;
+    out += `<g class="node ${shown(p.seq)?"":"ghost"} ${now?"now":""}" data-seq="${p.seq}">
+      <rect class="box" x="${xs.p}" y="${p.y-22}" width="${xs.pw}" height="44" rx="10" fill="var(--soft)" stroke="var(--line)"/>
+      <text x="${xs.p+12}" y="${p.y-4}">${esc(clip(p.text, 30))}</text><text class="sub" x="${xs.p+12}" y="${p.y+13}">You asked · step ${p.seq}</text></g>`;
+  }
+  // decision nodes
+  for (const d of decisions) {
+    const v = verdict(d.id), col = d.unexplained ? "var(--warn)" : v === "approved" ? "var(--ok)" : v === "rejected" ? "var(--bad)" : "var(--line)";
+    const fill = d.unexplained ? "var(--warnbg)" : v === "approved" ? "var(--okbg)" : v === "rejected" ? "var(--badbg)" : "var(--card)";
+    const flags = [d.unexplained ? "⚠ ask the agent why" : (v ? (v === "approved" ? "✓ approved" : "✗ rejected") : "waiting for review"),
+                   d.inferred ? "inferred by grasp" : "", (d.unverified||[]).length ? "⚠ claims unchanged files" : ""].filter(Boolean).join(" · ");
+    const now = curD === d.id;
+    out += `<g class="node ${shown(d.seq)?"":"ghost"} ${sel===d.id?"sel":""} ${now?"now":""}" data-d="${esc(d.id)}">
+      <rect class="box" x="${xs.d}" y="${d.y-24}" width="${xs.dw}" height="48" rx="10" fill="${fill}" stroke="${col}" stroke-width="2" ${d.inferred?'stroke-dasharray="5 4"':""}/>
+      <rect x="${xs.d}" y="${d.y-24}" width="6" height="48" rx="3" fill="var(--k-${d.kind||"other"})"/>
+      <text x="${xs.d+16}" y="${d.y-5}">${esc(clip(d.title, 46))}</text><text class="sub" x="${xs.d+16}" y="${d.y+13}">${esc((d.unexplained?"":(d.kind||"other")+" · ")+flags)}</text></g>`;
+  }
+  // file nodes
+  for (const f of files) {
+    const now = cur && cur.kind === "edit" && cur.file === f.file;
+    out += `<g class="node ${shown(f.seq)?"":"ghost"} ${now?"now":""}" data-f="${esc(f.file)}">
+      <rect class="box" x="${xs.f}" y="${f.y-20}" width="${xs.fw}" height="40" rx="8" fill="var(--soft)" stroke="${f.claimOnly?"var(--warn)":"var(--line)"}" ${f.claimOnly?'stroke-dasharray="4 4"':""}/>
+      <text x="${xs.f+10}" y="${f.y-3}">${esc(clipL(f.file, 30))}</text><text class="sub" x="${xs.f+10}" y="${f.y+13}">${f.claimOnly?"named, never changed":f.edits+" edit"+(f.edits>1?"s":"")}</text></g>`;
+  }
+  svg.innerHTML = out;
+  svg.querySelectorAll("[data-d]").forEach(g => g.onclick = () => select(g.dataset.d));
+  svg.querySelectorAll("[data-seq]").forEach(g => g.onclick = () => go(+g.dataset.seq));
+  svg.querySelectorAll("[data-f]").forEach(g => g.onclick = () => { const e = S.events.find(e => e.kind === "edit" && e.file === g.dataset.f); if (e) select(e.decision_id || UNEXPLAINED); });
+  renderChips(decisions); renderStory(); renderPanel(decisions);
+  $("#scrub").value = pos; $("#step").textContent = `step ${pos} of ${S.events.length}`;
+}
+
+function clip(s, n) { s = String(s || "").replace(/\s+/g, " "); return s.length > n ? s.slice(0, n - 1) + "…" : s; }
+function clipL(s, n) { return s.length > n ? "…" + s.slice(-(n - 1)) : s; }
+function lines(s) { return s ? String(s).split("\n").length : 0; }
+
+function renderChips(decisions) {
+  const real = decisions.filter(d => !d.unexplained);
+  const a = real.filter(d => verdict(d.id) === "approved").length, r = real.filter(d => verdict(d.id) === "rejected").length;
+  const unv = real.filter(d => (d.unverified||[]).length).length, inf = real.filter(d => d.inferred).length;
+  $("#chips").innerHTML = `<span class="chip"><b>${real.length}</b> decisions</span>
+    <span class="chip ok"><b>${a}</b> approved</span><span class="chip bad"><b>${r}</b> rejected</span>
+    <span class="chip"><b>${real.length - a - r}</b> waiting</span>
+    ${S.unexplained.length ? `<span class="chip warn"><b>${S.unexplained.length}</b> changes with no reason</span>` : ""}
+    ${unv ? `<span class="chip warn"><b>${unv}</b> unverified claims</span>` : ""}
+    ${inf ? `<span class="chip" title="The agent recorded no decisions; grasp grouped edits by what it said"><b>${inf}</b> inferred</span>` : ""}`;
+}
+
+function sayEvent(e) {
+  const who = S.agent === "claude-code" ? "Claude" : "The agent";
+  switch (e.kind) {
+    case "prompt": return ["💬", `<b>You asked:</b> ${esc(clip(e.text, 220))}`];
+    case "say": return ["🗨", `<b>${who} said:</b> ${esc(clip(e.text, 220))}`];
+    case "decision": { const d = S.decisions.find(d => d.id === e.decision_id); return ["◆", `<b>${who} decided:</b> ${esc(e.text)} <span class="tag">${esc(d ? d.kind : "")}</span>`]; }
+    case "edit": return ["✎", `<b>${who} ${e.new_file ? "wrote" : "changed"}</b> <code>${esc(e.file)}</code> <span class="tag">${e.new_file ? "+" + lines(e.after) : "−" + lines(e.before) + " +" + lines(e.after)} lines</span>${e.decision_id || !S.unexplained.includes(e.seq) ? "" : ' <span class="tag warn">no decision</span>'}`];
+    case "command": return ["›_", `<b>${who} ran</b> <code>${esc(clip(e.text, 140))}</code>${e.failed ? ' <span class="fail">failed</span>' : ""}`];
+    case "feedback": return ["📥", `<b>${who} read reviewer feedback</b> before starting`];
+    case "read": return ["👁", `${who} read <code>${esc(e.file)}</code>`];
+    default: return ["⚙", `${who} used ${esc(e.tool)}`];
+  }
+}
+
+function renderStory() {
+  const ol = $("#story");
+  const evs = S.events.slice(0, pos).filter(e => e.kind !== "read" && e.kind !== "tool");
+  ol.innerHTML = evs.map(e => { const [i, t] = sayEvent(e); return `<li data-seq="${e.seq}" class="${e.seq === pos ? "cur" : ""}"><span class="ico">${i}</span><span class="t">${t}</span></li>`; }).join("") ||
+    `<li><span class="t" style="color:var(--mute)">Press Replay to watch the work unfold.</span></li>`;
+  ol.querySelectorAll("li[data-seq]").forEach(li => li.onclick = () => { const e = S.events[li.dataset.seq - 1]; go(e.seq); const d = e.decision_id || (S.unexplained.includes(e.seq) ? UNEXPLAINED : ""); if (d) select(d); });
+  ol.scrollTop = ol.scrollHeight;
+}
+
+function diffHTML(e) {
+  const del = e.new_file ? [] : String(e.before || "").split("\n"), add = String(e.after || "").split("\n");
+  const cap = a => a.length > 80 ? a.slice(0, 80).concat([`… ${a.length - 80} more lines`]) : a;
+  return `<div class="diff"><div class="hd"><span>${esc(e.file)}</span><span>${e.new_file ? "new file" : "edit"} · step ${e.seq}</span></div><pre>${
+    cap(del).map(l => `<span class="l d">- ${esc(l)}</span>`).join("")}${cap(add).map(l => `<span class="l a">+ ${esc(l)}</span>`).join("")}</pre></div>`;
+}
+
+function renderPanel(decisions) {
+  const p = $("#panel");
+  const d = decisions.find(d => d.id === sel);
+  if (!d) {
+    p.innerHTML = `<div class="help"><h3>How to read this</h3>
+      <p><b>Left:</b> what you asked. <b>Middle:</b> the decisions the agent made. <b>Right:</b> the files it changed. Lines show which decision caused which change.</p>
+      <p>Press <b>Replay</b> to watch the session unfold step by step, or click any decision to see why it was made, the exact changes, and to approve or reject it.</p>
+      <div class="legend">
+        <span class="sw"></span><span>waiting for review</span>
+        <span class="sw" style="border-color:var(--ok);background:var(--okbg)"></span><span>approved</span>
+        <span class="sw" style="border-color:var(--bad);background:var(--badbg)"></span><span>rejected: the agent gets your comments next time</span>
+        <span class="sw" style="border-color:var(--warn);background:var(--warnbg)"></span><span>changes with no recorded reason</span>
+        <span class="sw" style="border-style:dashed"></span><span>inferred: grasp grouped edits by what the agent said</span>
+        <span class="sw" style="border-color:var(--warn);border-style:dashed"></span><span>a file the agent named but never changed</span>
+      </div>
+      <p style="margin-top:14px">Keys: <span class="kbd">j</span>/<span class="kbd">k</span> next/previous decision, <span class="kbd">a</span> approve, <span class="kbd">r</span> reject, <span class="kbd">space</span> play/pause.</p></div>`;
+    return;
+  }
+  const edits = (d.edits || []).map(s => S.events[s - 1]);
+  const v = verdict(d.id), rv = R[d.id] || {};
+  const changed = new Set(edits.map(e => e.file));
+  p.innerHTML = `
+    ${d.unexplained ? `<span class="tag warn">no recorded decision</span>` : `<span class="kind" style="background:var(--k-${d.kind||"other"})">${esc(d.kind||"other")}</span>`}
+    ${d.inferred ? `<span class="tag">inferred by grasp</span>` : ""}
+    ${v ? `<span class="tag ${v === "approved" ? "ok" : "bad"}">${v}${rv.by ? " by " + esc(rv.by) : ""}</span>` : ""}
+    <h2>${esc(d.title)}</h2>
+    ${d.unexplained ? `<p style="color:var(--mute)">These changes came with no decision the agent recorded. Read them closely, or ask the agent why it made them.</p>` : ""}
+    ${d.why && !d.unexplained ? `<div class="sec"><div class="lbl">${d.inferred ? "What the agent said" : "Why"}</div>${esc(d.why)}</div>` : ""}
+    ${(d.alternatives||[]).length ? `<div class="sec"><div class="lbl">Considered instead</div><ul style="margin:0;padding-left:18px">${d.alternatives.map(a => `<li>${esc(a)}</li>`).join("")}</ul></div>` : ""}
+    ${d.risk ? `<div class="sec"><div class="lbl">Risk</div>${esc(d.risk)}</div>` : ""}
+    <div class="sec"><div class="lbl">Files</div><ul class="files">${(d.files||[]).map(f => changed.has(f) ? `<li>✓ ${esc(f)}</li>` : `<li style="color:var(--warn)">⚠ ${esc(f)} <span style="font-family:system-ui">(named, never changed)</span></li>`).join("")}</ul></div>
+    <div class="sec"><div class="lbl">Changes (${edits.length})</div>${edits.map(diffHTML).join("") || '<span style="color:var(--mute)">No edits linked yet.</span>'}</div>
+    ${d.unexplained ? "" : `<div class="review"><h3>Your review</h3>
+      <div class="row"><button class="btn ok" data-v="approved">✓ Approve</button><button class="btn bad" data-v="rejected">✗ Reject</button>${v ? '<button class="btn" data-v="">Reset</button>' : ""}
+      <span style="margin-left:auto;font-size:12px;color:var(--mute)">as</span><input class="name" id="who" placeholder="your name" value="${esc(me)}"></div>
+      <textarea id="note" placeholder="Comment for the team and the agent (e.g. 'use the shared limiter in pkg/ratelimit')"></textarea>
+      <div class="row"><button class="btn" id="send">Add comment</button></div>
+      ${(rv.comments||[]).map(c => `<div class="comment"><div class="who">${esc(c.author)} · ${new Date(c.time).toLocaleString()}</div>${esc(c.text)}</div>`).join("")}</div>`}`;
+  p.querySelectorAll("[data-v]").forEach(b => b.onclick = () => review(d.id, b.dataset.v, $("#note").value));
+  const send = $("#send"); if (send) send.onclick = () => review(d.id, null, $("#note").value);
+}
+
+async function review(id, v, comment) {
+  const who = $("#who"); if (who) { me = who.value.trim(); try { localStorage.setItem("grasp.name", me); } catch {} }
+  const body = { decision: id, author: me || "reviewer", comment: comment || "" };
+  if (v !== null) body.verdict = v;
+  const res = await fetch("api/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (res.ok) { R[id] = await res.json(); render(); }
+}
+
+function select(id, toggle = true) { sel = toggle && sel === id ? null : id; render(); }
+function go(p) { pos = Math.max(0, Math.min(p, S.events.length)); render(); }
+function stop() { clearInterval(timer); timer = null; $("#play").textContent = "▶ Replay"; }
+function play() {
+  if (timer) return stop();
+  if (pos >= S.events.length) pos = 0;
+  $("#play").textContent = "❚❚ Pause";
+  const tick = () => {
+    // skip quiet steps so the animation moves at the pace of real work
+    do { pos++; } while (pos < S.events.length && ["read","tool"].includes(S.events[pos-1].kind));
+    const e = S.events[pos - 1];
+    if (e && (e.decision_id || e.kind === "edit")) { const d = e.decision_id || (S.unexplained.includes(e.seq) ? UNEXPLAINED : sel); sel = d; }
+    render();
+    if (pos >= S.events.length) stop();
+  };
+  tick(); timer = setInterval(tick, +$("#speed").value);
+}
+
+$("#play").onclick = play;
+$("#speed").onchange = () => { if (timer) { stop(); play(); } };
+$("#scrub").oninput = e => { stop(); go(+e.target.value); };
+$("#sessions").onchange = e => { sessionId = e.target.value; sel = null; S = null; stop(); load(); };
+$("#fbBtn").onclick = async () => { $("#fbText").textContent = await (await fetch("api/feedback")).text(); fb.showModal(); };
+$("#fbCopy").onclick = () => navigator.clipboard && navigator.clipboard.writeText($("#fbText").textContent);
+document.addEventListener("keydown", e => {
+  if (!S || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  const ids = nodesFor().decisions.map(d => d.id), i = ids.indexOf(sel);
+  if (e.key === "j") select(ids[Math.min(i + 1, ids.length - 1)] ?? ids[0], false);
+  else if (e.key === "k") select(ids[Math.max(i - 1, 0)] ?? ids[0], false);
+  else if (e.key === "a" && sel && sel !== UNEXPLAINED) review(sel, "approved", "");
+  else if (e.key === "r" && sel && sel !== UNEXPLAINED) review(sel, "rejected", "");
+  else if (e.key === " ") { e.preventDefault(); play(); }
+  else return;
+});
+load().then(() => {
+  try { const es = new EventSource("api/live"); let first = true; es.onmessage = () => { if (first) { first = false; return; } if (!timer) load(true); }; } catch {}
+});
+</script>
+</body>
+</html>
