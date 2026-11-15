@@ -12,6 +12,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/arsaljamal/grasp/internal/impact"
 	"github.com/arsaljamal/grasp/internal/session"
 	"github.com/arsaljamal/grasp/internal/store"
 )
@@ -38,6 +39,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/session", s.session)
 	mux.HandleFunc("POST /api/review", s.review)
 	mux.HandleFunc("GET /api/feedback", s.feedback)
+	mux.HandleFunc("GET /api/impact", s.impact)
 	mux.HandleFunc("GET /api/live", s.live)
 	return mux
 }
@@ -91,6 +93,11 @@ func (s *Server) session(w http.ResponseWriter, r *http.Request) {
 			mine[d.ID] = rv
 		}
 	}
+	for _, b := range se.Behaviors {
+		if rv := reviews[b.ID]; rv != nil {
+			mine[b.ID] = rv
+		}
+	}
 	reply(w, map[string]any{"session": se, "reviews": mine})
 }
 
@@ -99,6 +106,7 @@ type reviewIn struct {
 	Author   string  `json:"author"`
 	Verdict  *string `json:"verdict"`
 	Comment  string  `json:"comment"`
+	Expected *bool   `json:"expected"` // for behavior examples: did it match the prediction?
 }
 
 func (s *Server) review(w http.ResponseWriter, r *http.Request) {
@@ -110,6 +118,15 @@ func (s *Server) review(w http.ResponseWriter, r *http.Request) {
 	if in.Author == "" {
 		in.Author = "reviewer"
 	}
+	if in.Expected != nil {
+		rv, err := s.st.SetExpected(in.Decision, in.Author, *in.Expected)
+		if err != nil {
+			fail(w, err)
+			return
+		}
+		reply(w, rv)
+		return
+	}
 	verdict := ""
 	if in.Verdict != nil {
 		verdict = *in.Verdict
@@ -120,6 +137,17 @@ func (s *Server) review(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply(w, rv)
+}
+
+// impact reports what the session's changes could break, checked against
+// the project as it is now.
+func (s *Server) impact(w http.ResponseWriter, r *http.Request) {
+	se, err := s.st.Session(r.URL.Query().Get("id"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	reply(w, impact.Analyze(se))
 }
 
 func (s *Server) feedback(w http.ResponseWriter, _ *http.Request) {

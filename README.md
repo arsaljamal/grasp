@@ -10,7 +10,7 @@ Rejections go back to the agent.
 
 ![A decision in grasp: before and after, run for real](docs/img/review.png)
 
-| Start here: what changed for users | Reject with a note for the agent |
+| Start here: guess, then see; and what it could break | Reject with a note for the agent |
 |---|---|
 | ![What changed for users](docs/img/what-changed.png) | ![Rejecting a decision](docs/img/reject.png) |
 
@@ -39,6 +39,11 @@ Rejections go back to the agent.
   server, send an empty title, print the response). grasp runs it on the code from before the session and on
   the code now, and shows both outputs side by side. The agent cannot fake them: grasp runs them itself.
   Decisions with no demonstration say so.
+- **Guess first, then see.** On the start card the new output stays hidden until you think about what it
+  should be. Then you say whether it matched. Anything that surprised you is flagged before you approve it.
+- **What it could break, checked by grasp, not the agent.** It flags existing tests the agent changed or
+  weakened, and finds code elsewhere in the project that uses a function the agent changed but was not
+  updated (or a deleted function that is still called).
 - **Decisions, not lines.** Each decision shows *why*, the options the agent rejected, the risk it saw, and
   the exact changes that carry it out.
 - **Nothing hides.** Edits that no decision explains are grouped as *changes with no recorded reason*.

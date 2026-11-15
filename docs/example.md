@@ -57,3 +57,13 @@ demonstrated 2 of them. grasp ran each example on the original code and on the n
 | `{"id":99,"title":"x"}` | `201`, client chose its own id | `400 unknown field "id"` |
 
 The tests decision had no example, and grasp says so on its card.
+
+## 5. What it could break (added later)
+
+A second file, a bulk importer, shares the `validateTitle` helper with POST /todos.
+
+- **"Stricter titles on POST /todos":** Claude added a separate check for POST only and left the shared
+  helper alone. grasp reported no ripple (correct), and flagged that an existing test was changed.
+  An early version raised a false alarm here; it now looks only at lines that actually changed.
+- **"Collapse repeated spaces in titles":** Claude changed `validateTitle` itself. grasp flagged that
+  `importer.go:15` uses it and was not touched, so bulk imports now behave differently too.

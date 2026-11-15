@@ -36,6 +36,9 @@ type Review struct {
 	Verdict  string    `json:"verdict"`
 	By       string    `json:"by,omitempty"`
 	Comments []Comment `json:"comments,omitempty"`
+	// Expected records, for a behavior example, whether the reviewer's
+	// prediction matched what the new code did.
+	Expected *bool     `json:"expected,omitempty"`
 	Updated  time.Time `json:"updated"`
 }
 
@@ -213,6 +216,24 @@ func (s *Store) Review(decisionID, author, verdict string, setVerdict bool, comm
 		r.Comments = append(r.Comments, Comment{Author: author, Text: c, Time: now})
 	}
 	r.Updated = now
+	return r, writeJSON(filepath.Join(s.Dir, "reviews.json"), m)
+}
+
+// SetExpected records whether a behavior example matched the reviewer's
+// prediction.
+func (s *Store) SetExpected(id, author string, expected bool) (*Review, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	m, err := s.Reviews()
+	if err != nil {
+		return nil, err
+	}
+	r := m[id]
+	if r == nil {
+		r = &Review{}
+		m[id] = r
+	}
+	r.Expected, r.By, r.Updated = &expected, author, time.Now().UTC()
 	return r, writeJSON(filepath.Join(s.Dir, "reviews.json"), m)
 }
 

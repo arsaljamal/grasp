@@ -119,6 +119,20 @@ pre.fb{text-align:left;white-space:pre-wrap;background:var(--soft);padding:14px;
 .ev details summary{cursor:pointer}
 .ev.click{cursor:pointer}.ev.click:hover{border-color:var(--accent)}
 .lead{font-size:18px;color:var(--mute);margin:0 0 6px}
+.reveal{border:2px dashed var(--accent);border-radius:10px;background:none;color:var(--accent);font-weight:700;cursor:pointer;padding:12px;font-size:15px;width:100%;height:100%;min-height:90px}
+.reveal:hover{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+.expect{margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:15px}
+.expect b{font-weight:600}
+.pill{border:1px solid var(--line);background:var(--card);border-radius:999px;padding:6px 14px;cursor:pointer;font-weight:600}
+.pill:hover{border-color:var(--accent)}
+.answered{font-size:14px;margin-top:8px}.answered.ok{color:var(--ok)}.answered.bad{color:var(--warn)}
+h2.sec{font-size:20px;margin:28px 0 4px}
+.risk{border:1px solid var(--line);border-left:4px solid var(--warn);border-radius:12px;padding:12px 14px;margin:12px 0}
+.risk .t{font-weight:600}
+.risk ul{margin:8px 0 0;padding-left:0;list-style:none}
+.risk li{font:13px/1.5 ui-monospace,Menlo,monospace;padding:3px 0;overflow-wrap:anywhere}
+.risk li span{color:var(--mute)}
+.calm{border-left-color:var(--ok)}
 code{font:0.9em ui-monospace,Menlo,monospace;background:var(--soft);padding:1px 6px;border-radius:6px}
 .empty{text-align:center;color:var(--mute);padding:60px 20px}
 .keys{margin-top:14px;font-size:13px;color:var(--mute);text-align:center}
@@ -144,6 +158,9 @@ const KINDS = {architecture:["🏛","Architecture"],"data-model":["🗃","Data m
   dependency:["📦","New dependency"],security:["🔒","Security"],performance:["⚡","Performance"],testing:["🧪","Tests"],quality:["✨","Code quality"],other:["•","Change"]};
 const UNEXPLAINED = "__unexplained__", OVERVIEW = "__overview__";
 const reviewable = d => !d.unexplained && !d.overview;
+const expected = id => R[id] ? R[id].expected : undefined;
+const surprised = d => S.behaviors.some(b => b.decision_id === d.id && expected(b.id) === false);
+let I = { tests: [], ripples: [] }, revealed = new Set();
 let S = null, R = {}, items = [], idx = 0, tab = "review", sessionId = "", open = "";
 let watch = { pos: 0, timer: null };
 let me = ""; try { me = localStorage.getItem("grasp.name") || ""; } catch {}
@@ -171,8 +188,10 @@ async function load(keep) {
   S = res.session; R = res.reviews || {};
   S.events = S.events || []; S.decisions = S.decisions || []; S.unexplained = S.unexplained || [];
   S.behaviors = S.behaviors || [];
+  try { I = await (await fetch("api/impact?id=" + encodeURIComponent(sessionId))).json(); } catch { I = { tests: [], ripples: [] }; }
+  I.tests = I.tests || []; I.ripples = I.ripples || [];
   items = S.decisions.slice().sort((a, b) => a.seq - b.seq);
-  if (S.behaviors.length) items.unshift({ id: OVERVIEW, overview: true, title: "What changed for users", seq: 0 });
+  if (S.behaviors.length || items.length) items.unshift({ id: OVERVIEW, overview: true, title: "What changed for users", seq: 0 });
   if (S.unexplained.length) items.push({ id: UNEXPLAINED, kind: "other", title: "Changes with no reason given", edits: S.unexplained,
     files: [...new Set(S.unexplained.map(s => S.events[s - 1].file))], unexplained: true, seq: Math.min(...S.unexplained) });
   if (!keep) { idx = firstPending(); watch.pos = 0; }
@@ -180,7 +199,7 @@ async function load(keep) {
   render();
 }
 
-function firstPending() { if (items[0] && items[0].overview && !Object.keys(R).length) return 0; const i = items.findIndex(d => reviewable(d) && !verdict(d.id)); return i < 0 ? items.length : i; }
+function firstPending() { if (items[0] && items[0].overview && !items.some(d => reviewable(d) && verdict(d.id))) return 0; const i = items.findIndex(d => reviewable(d) && !verdict(d.id)); return i < 0 ? items.length : i; }
 
 function render() {
   const prompt = S.events.find(e => e.kind === "prompt");
@@ -271,11 +290,33 @@ function behaviorHTML(b, opts = {}) {
   const foot = !ran ? `<span class="bad">⚠ grasp has no output for this example</span>`
     : same ? `<span class="bad">⚠ Same output before and now: this example shows no change</span>`
     : `<span class="okk">✓ grasp ran this on the old and the new code</span>`;
-  return `<div class="ev ${opts.click ? "click" : ""}" ${opts.click ? `data-go="${esc(b.decision_id || "")}"` : ""}>
-    <div class="t">🔬 ${esc(b.title)}</div>
-    ${ran ? `<div class="pair">${sideHTML(b.before || {}, "before", "Before", lines)}<div class="to">→</div>${sideHTML(b.after || {}, "after" + (same ? " same" : ""), "Now", lines)}</div>` : ""}
-    <div class="foot">${foot}${b.expect ? `<span>Agent expected: ${esc(b.expect)}</span>` : ""}
+  return `<div class="ev">
+    <div class="t">🔬 ${esc(b.title)}${opts.click && b.decision_id ? ` <button class="link" data-go="${esc(b.decision_id)}" style="margin-left:auto;padding:3px 10px">its decision →</button>` : ""}</div>
+    ${ran ? `<div class="pair">${sideHTML(b.before || {}, "before", "Before", lines)}<div class="to">→</div>${
+      opts.predict && !shownNow(b) ? `<button class="reveal" data-reveal="${esc(b.id)}">🤔 What will the new code print?<br><span style="font-weight:400">Think about it, then tap to see</span></button>`
+      : sideHTML(b.after || {}, "after" + (same ? " same" : ""), "Now", lines)}</div>` : ""}
+    ${opts.predict && ran && shownNow(b) ? (expected(b.id) === undefined
+      ? `<div class="expect"><b>Was that what you expected?</b><button class="pill" data-exp="${esc(b.id)}" data-v="1">👍 Yes</button><button class="pill" data-exp="${esc(b.id)}" data-v="0">😮 No, it surprised me</button></div>`
+      : expected(b.id) ? `<div class="answered ok">👍 You expected this.</div>` : `<div class="answered bad">😮 This surprised you. Its decision is flagged so you look closer before approving.</div>`) : ""}
+    <div class="foot">${foot}${b.expect && !(opts.predict && !shownNow(b)) ? `<span>Agent expected: ${esc(b.expect)}</span>` : ""}
       ${opts.click ? "" : `<details><summary>How it was run</summary><code>${esc(b.command)}</code></details>`}</div></div>`;
+}
+
+const shownNow = b => revealed.has(b.id) || expected(b.id) !== undefined;
+
+function riskHTML() {
+  const name = id => { const d = S.decisions.find(d => d.id === id); return d ? short(d.title) : ""; };
+  let h = "";
+  for (const t of I.tests) h += `<div class="risk"><div class="t">🧪 It changed an existing test: <code>${esc(t.file)}</code></div>
+      <div style="color:var(--mute);margin-top:4px">${t.removed_checks ? `${t.removed_checks} check${t.removed_checks > 1 ? "s" : ""} removed. ` : ""}Make sure the test still checks the right thing and wasn't changed just to make the code pass.</div>
+      <button class="link" data-testdiff="${esc(t.file)}" style="margin-top:8px">${open === "t:" + t.file ? "Hide" : "See"} the test change</button>
+      ${open === "t:" + t.file ? t.edits.map(s => diffHTML(S.events[s - 1])).join("") : ""}</div>`;
+  for (const r of I.ripples) h += `<div class="risk"><div class="t">🔗 <code>${esc(r.symbol)}</code> ${r.removed ? "was deleted" : "was changed"}${name(r.decision) ? ` (${esc(name(r.decision))})` : ""}</div>
+      <div style="color:var(--mute);margin-top:4px">${r.removed ? "It is still used here, so this code may no longer build or run:" : `It is also used here, in code the agent didn't touch. These places now get the new behavior:`}</div>
+      <ul>${r.uses.map(u => `<li><span>${esc(u.file)}:${u.line}</span>  ${esc(u.text)}</li>`).join("")}</ul></div>`;
+  if (!h) h = I.note ? `<div class="note info">Couldn't check: ${esc(I.note)}.</div>`
+    : `<div class="risk calm"><div class="t">✓ Nothing found</div><div style="color:var(--mute);margin-top:4px">No existing tests were changed, and nothing else in the project uses the changed code (searched ${I.searched} file${I.searched === 1 ? "" : "s"}).</div></div>`;
+  return h;
 }
 
 function renderOverview() {
@@ -283,11 +324,20 @@ function renderOverview() {
   $("#main").innerHTML = `<div class="card in">
     <span class="kind"><span class="ico">👁</span>Start here</span>
     <h1>What changed for users</h1>
-    <p class="lead">grasp ran each example on the code from before and on the code now. These are real outputs, not descriptions.</p>
-    ${bs.map(b => behaviorHTML(b, { click: true, lines: 5 })).join("")}
+    ${bs.length ? `<p class="lead">grasp ran each example on the old code and the new code. Before each result, guess what the new code does.</p>
+    ${bs.map(b => behaviorHTML(b, { click: true, predict: true, lines: 5 })).join("")}
+    ${bs.some(b => !shownNow(b)) ? `<button class="link" id="showAll">Skip guessing, show all</button>` : ""}`
+    : `<div class="note info">The agent didn't demonstrate any change, so there are no before/after examples.</div>`}
+    <h2 class="sec">What it could break</h2>
+    <p class="lead" style="font-size:16px">grasp checked the project itself. The agent didn't write this part.</p>
+    ${riskHTML()}
     <div class="actions"><button class="big ok" id="start" style="background:var(--accent)">Review the decisions →</button></div></div>`;
   $("#start").onclick = () => move(1);
   document.querySelectorAll("[data-go]").forEach(el => el.onclick = () => { const i = items.findIndex(d => d.id === el.dataset.go); if (i >= 0) { idx = i; open = ""; render(); } });
+  document.querySelectorAll("[data-reveal]").forEach(el => el.onclick = () => { revealed.add(el.dataset.reveal); renderOverview(); });
+  document.querySelectorAll("[data-exp]").forEach(el => el.onclick = () => answer(el.dataset.exp, el.dataset.v === "1"));
+  document.querySelectorAll("[data-testdiff]").forEach(el => el.onclick = () => { const k = "t:" + el.dataset.testdiff; open = open === k ? "" : k; renderOverview(); });
+  if ($("#showAll")) $("#showAll").onclick = () => { S.behaviors.forEach(b => revealed.add(b.id)); renderOverview(); };
 }
 
 function renderCard(d) {
@@ -296,6 +346,9 @@ function renderCard(d) {
   const why = d.unexplained ? "The agent changed these files without saying why. Look at the code, or ask the agent." : firstSentence(d.why);
   const notes = [];
   if ((d.unverified || []).length) notes.push(`<div class="note warn">⚠ It said it would change <b>${esc(d.unverified.join(", "))}</b>, but never did.</div>`);
+  if (surprised(d)) notes.push(`<div class="note warn">😮 One of its examples surprised you. Read the full reasoning before you approve.</div>`);
+  for (const t of I.tests.filter(t => (t.decisions || []).includes(d.id))) notes.push(`<div class="note warn">🧪 It changed an existing test, <b>${esc(t.file)}</b>${t.removed_checks ? `, and removed ${t.removed_checks} check${t.removed_checks > 1 ? "s" : ""}` : ""}. Check it wasn't weakened to pass.</div>`);
+  for (const r of I.ripples.filter(r => r.decision === d.id)) notes.push(`<div class="note warn">🔗 <b>${esc(r.symbol)}</b> ${r.removed ? "was deleted but is still used" : "is also used"} in ${r.uses.length} place${r.uses.length > 1 ? "s" : ""} the agent didn't touch: ${r.uses.slice(0, 3).map(u => `<code>${esc(u.file)}:${u.line}</code>`).join(", ")}${r.uses.length > 3 ? "…" : ""}</div>`);
   if (d.inferred) notes.push(`<div class="note info">The agent didn't explain this step, so grasp grouped these edits using what it said.</div>`);
   const hasMore = !d.unexplained && ((d.why && d.why.length > why.length) || (d.alternatives || []).length || d.risk);
   $("#main").innerHTML = `<div class="card in">
@@ -341,6 +394,12 @@ function askReject(d) {
   $("#cancel").onclick = () => { $("#rejectBox").innerHTML = ""; };
 }
 
+async function answer(id, ok) {
+  const res = await fetch("api/review", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ decision: id, author: me || "reviewer", expected: ok }) });
+  if (res.ok) { R[id] = await res.json(); renderOverview(); }
+}
+
 async function decide(d, v, comment) {
   const who = $("#who"); if (who) { me = who.value.trim(); try { localStorage.setItem("grasp.name", me); } catch {} }
   const res = await fetch("api/review", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -365,6 +424,7 @@ async function renderDone() {
     <div class="big-ico">${r ? "📝" : "🎉"}</div>
     <h1>All decisions reviewed</h1>
     <div class="tally"><div><b style="color:var(--ok)">${a}</b>approved</div><div><b style="color:var(--bad)">${r}</b>rejected</div></div>
+    ${S.behaviors.some(b => expected(b.id) === false) ? `<p>😮 ${S.behaviors.filter(b => expected(b.id) === false).length} example${S.behaviors.filter(b => expected(b.id) === false).length > 1 ? "s" : ""} surprised you. Worth a second look.</p>` : ""}
     <p>${r ? "Next time the agent starts, it reads your feedback and fixes what you rejected." : "Nothing to fix. The agent's work matches what you wanted."}</p>
     ${fb ? `<details><summary style="cursor:pointer;color:var(--mute)">What the agent will read</summary><pre class="fb">${esc(fb)}</pre></details>` : ""}
     <div class="row" style="justify-content:center;margin-top:18px"><button class="btn" id="again">Look again from the start</button></div></div>`;
