@@ -68,12 +68,28 @@ grasp serve     # open http://127.0.0.1:7080 and review; it updates live while t
 Already have sessions? `grasp import --latest` loads the newest Claude Code session for this folder, or pass
 transcript files: `grasp import ~/.claude/projects/<project>/<session>.jsonl`.
 
+## Reviewing a pull request (no agent session)
+
+Most changes reach reviewers as a pull request, not as a live agent session. Check out the branch and run:
+
+```sh
+grasp pr -base origin/main -title "PR title" -body "PR description" -explain
+grasp serve
+```
+
+Without `-explain`, each commit becomes a decision (its message is the reason) and you still get the full
+"What it could break" check. With `-explain`, Claude Code reads the diff (as files, with no write access),
+records the real design decisions, says where to look first, and demonstrates behavior with `show_behavior`,
+which runs on the base commit and on the branch. Every claim is linked to the actual diff, and test files
+are grouped with the code they test.
+
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `grasp init` | Set up Claude Code in this project. Merges into existing config files, never overwrites them. |
 | `grasp serve [-addr]` | The review page, on 127.0.0.1:7080 by default. |
+| `grasp pr` | Load a branch or pull request from git; `-explain` adds Claude's decisions and examples. |
 | `grasp import` | Load Claude Code transcripts. |
 | `grasp feedback` | Print reviewer feedback as Markdown instructions (the same text the agent gets). |
 | `grasp mcp` | The MCP server the agent starts: `record_decision`, `show_behavior`, `get_review_feedback`. |

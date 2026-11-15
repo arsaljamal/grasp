@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -70,7 +71,13 @@ func runAt(ctx context.Context, dir, base, command string, timeout time.Duration
 		return Run{Skipped: "could not check out the earlier code: " + strings.TrimSpace(string(out))}
 	}
 	defer exec.Command("git", "-C", dir, "worktree", "remove", "--force", tmp).Run()
-	return run(ctx, tmp, command, timeout)
+	r := run(ctx, tmp, command, timeout)
+	// show paths as they would appear in the project, not in the temp copy
+	r.Output = strings.ReplaceAll(r.Output, tmp+"/", "")
+	if real, err := filepath.EvalSymlinks(tmp); err == nil {
+		r.Output = strings.ReplaceAll(r.Output, real+"/", "")
+	}
+	return r
 }
 
 // run executes command with sh in its own process group, so servers the

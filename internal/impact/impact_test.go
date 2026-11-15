@@ -52,6 +52,9 @@ func TestFindsRipplesAndTestChanges(t *testing.T) {
 	if rp := r.Ripples[1]; rp.Symbol != "normalizeTitle" || rp.Decision != "d1" || rp.Uses[0].File != "bulk.go" || rp.Uses[0].Line != 5 {
 		t.Fatalf("changed function used by an untouched file: %+v", rp)
 	}
+	if r.Ripples[1].AddedOnly {
+		t.Fatal("normalizeTitle's body was rewritten, not just added to")
+	}
 	if r.Searched != 2 {
 		t.Fatalf("searched %d files, want the 2 untouched ones (bulk.go, cli.go)", r.Searched)
 	}
@@ -79,5 +82,17 @@ func TestNewFunctionBelowExistingIsNotARipple(t *testing.T) {
 		if rp.Symbol == "validateTitle" {
 			t.Fatalf("validateTitle was not changed but was reported: %+v", rp)
 		}
+	}
+}
+
+func TestAddedOnlyIsMarked(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "config.go", "package config\n\nfunc setDefaults(v *V) {\n\tv.Set(\"A\", 1)\n\tv.Set(\"B\", 2)\n}\n")
+	write(t, dir, "x_test.go", "package config\n\nfunc TestX() { setDefaults(nil) }\n")
+	s := &session.Session{Dir: dir, Events: []session.Event{{Seq: 1, Kind: session.KindEdit, File: "config.go",
+		Before: "\tv.Set(\"A\", 1)\n", After: "\tv.Set(\"A\", 1)\n\tv.Set(\"B\", 2)\n"}}}
+	r := Analyze(s)
+	if len(r.Ripples) != 1 || !r.Ripples[0].AddedOnly {
+		t.Fatalf("%+v", r.Ripples)
 	}
 }

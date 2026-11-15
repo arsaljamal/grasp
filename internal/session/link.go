@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"path"
 	"strings"
 )
 
@@ -46,6 +47,9 @@ func Link(s *Session) {
 			}
 		}
 		lastEdit[e.File] = e.Seq
+		if best < 0 {
+			best = testOwner(s.Decisions, e.File) // a test goes with the code it tests
+		}
 		if best < 0 {
 			s.Unexplained = append(s.Unexplained, e.Seq)
 			continue
@@ -170,4 +174,34 @@ func linkBehaviors(s *Session) {
 			}
 		}
 	}
+}
+
+// testOwner finds the decision that changed the code a test file tests:
+// repository_sqlmock_test.go belongs with repository.go in the same folder.
+func testOwner(ds []Decision, file string) int {
+	dir, name := path.Split(file)
+	stem := ""
+	for _, marker := range []string{"_test.", ".test.", ".spec.", "_spec."} {
+		if i := strings.Index(name, marker); i > 0 {
+			stem = name[:i]
+			break
+		}
+	}
+	if strings.HasPrefix(name, "test_") {
+		stem = strings.TrimSuffix(strings.TrimPrefix(name, "test_"), path.Ext(name))
+	}
+	if stem == "" {
+		return -1
+	}
+	best, bestLen := -1, 0
+	for i, d := range ds {
+		for _, f := range d.Files {
+			fdir, fname := path.Split(f)
+			fstem := strings.TrimSuffix(fname, path.Ext(fname))
+			if fdir == dir && fstem != "" && strings.HasPrefix(stem, fstem) && len(fstem) > bestLen && !strings.Contains(fname, "_test.") {
+				best, bestLen = i, len(fstem)
+			}
+		}
+	}
+	return best
 }

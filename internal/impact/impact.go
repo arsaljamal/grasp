@@ -39,7 +39,10 @@ type Ripple struct {
 	File     string `json:"file"`
 	Decision string `json:"decision,omitempty"`
 	Removed  bool   `json:"removed,omitempty"` // the definition no longer exists
-	Uses     []Use  `json:"uses"`
+	// AddedOnly means the change only added lines there; existing callers
+	// usually keep working, so it is lower risk than a modification.
+	AddedOnly bool  `json:"added_only,omitempty"`
+	Uses      []Use `json:"uses"`
 }
 
 // Use is one place that refers to a changed definition.
@@ -91,6 +94,7 @@ func Analyze(s *session.Session) Report {
 	type sym struct {
 		file, decision string
 		removed        bool
+		modified       bool // some edit removed or rewrote lines
 	}
 	syms := map[string]sym{}
 	for _, e := range s.Events {
@@ -127,9 +131,12 @@ func Analyze(s *session.Session) Report {
 		current, _ := os.ReadFile(filepath.Join(s.Dir, e.File))
 		lines := strings.Split(string(current), "\n")
 		for _, name := range enclosing(lines, e.Before, e.After) {
-			if _, ok := syms[name]; !ok {
-				syms[name] = sym{file: e.File, decision: e.DecisionID}
+			sy, ok := syms[name]
+			if !ok {
+				sy = sym{file: e.File, decision: e.DecisionID}
 			}
+			sy.modified = sy.modified || len(removed) > 0
+			syms[name] = sy
 		}
 		for _, l := range removed {
 			if name := defName(l); name != "" && !definedIn(lines, name) {
@@ -149,7 +156,7 @@ func Analyze(s *session.Session) Report {
 		if len(name) < 3 || stop[name] {
 			continue
 		}
-		rp := Ripple{Symbol: name, File: sy.file, Decision: sy.decision, Removed: sy.removed}
+		rp := Ripple{Symbol: name, File: sy.file, Decision: sy.decision, Removed: sy.removed, AddedOnly: !sy.removed && !sy.modified}
 		word := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
 		for _, f := range files {
 			if edited[f] || len(rp.Uses) >= maxUses {
@@ -164,6 +171,9 @@ func Analyze(s *session.Session) Report {
 	sort.Slice(r.Ripples, func(i, j int) bool {
 		if r.Ripples[i].Removed != r.Ripples[j].Removed {
 			return r.Ripples[i].Removed
+		}
+		if r.Ripples[i].AddedOnly != r.Ripples[j].AddedOnly {
+			return !r.Ripples[i].AddedOnly
 		}
 		return r.Ripples[i].Symbol < r.Ripples[j].Symbol
 	})

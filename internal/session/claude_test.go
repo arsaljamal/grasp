@@ -106,3 +106,19 @@ func TestBehaviorEvidenceIsParsedAndLinked(t *testing.T) {
 		t.Fatalf("linked to %q, want the earlier decision d1", b.DecisionID)
 	}
 }
+
+func TestTestFilesGoWithTheCodeTheyTest(t *testing.T) {
+	s := &Session{
+		Events: []Event{
+			{Seq: 1, Kind: KindDecision},
+			{Seq: 2, Kind: KindEdit, File: "pkg/repo.go"},
+			{Seq: 3, Kind: KindEdit, File: "pkg/repo_sqlmock_test.go"},
+			{Seq: 4, Kind: KindEdit, File: "other/x_test.go"},
+		},
+		Decisions: []Decision{{ID: "d", Seq: 1, Files: []string{"pkg/repo.go"}}},
+	}
+	Link(s)
+	if !reflect.DeepEqual(s.Decisions[0].Edits, []int{2, 3}) || !reflect.DeepEqual(s.Unexplained, []int{4}) {
+		t.Fatalf("edits=%v unexplained=%v", s.Decisions[0].Edits, s.Unexplained)
+	}
+}

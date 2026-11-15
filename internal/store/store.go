@@ -103,6 +103,7 @@ func (s *Store) Sessions() ([]*session.Session, error) {
 	for _, f := range files {
 		var se session.Session
 		if readJSON(f, &se) == nil {
+			session.Link(&se) // apply the current linking rules to older saves
 			out = append(out, &se)
 			for _, d := range se.Decisions {
 				seen[d.Title] = true

@@ -15,11 +15,13 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/arsaljamal/grasp/internal/behavior"
 	"github.com/arsaljamal/grasp/internal/mcpserver"
+	"github.com/arsaljamal/grasp/internal/session"
 	"github.com/arsaljamal/grasp/internal/store"
 	"github.com/arsaljamal/grasp/internal/web"
 )
@@ -31,6 +33,9 @@ const usage = `grasp: review what your coding agent did, decision by decision.
 Usage:
   grasp init                 set up Claude Code in this project (MCP server, hooks, CLAUDE.md)
   grasp serve [-addr A]      open the review page (default http://127.0.0.1:7080)
+  grasp pr -base REF [-head REF] [-title T] [-body B] [-explain]
+                             review a branch or pull request that has no agent session
+                             (-explain: Claude records decisions and runnable examples)
   grasp import [--latest | transcript.jsonl ...]
                              load Claude Code sessions (--latest: newest session for this folder)
   grasp feedback             print reviewer feedback as instructions for the agent
@@ -57,10 +62,12 @@ func main() {
 		err = runServe(ctx, args)
 	case "import":
 		err = runImport(args)
+	case "pr":
+		err = runPR(ctx, args)
 	case "feedback":
 		err = runFeedback()
 	case "mcp":
-		err = runMCP(ctx)
+		err = runMCP(ctx, args)
 	case "hook":
 		runHook(os.Stdin)
 	case "version", "--version":
@@ -133,7 +140,7 @@ func runImport(args []string) error {
 func latestTranscript() (string, error) {
 	wd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	enc := strings.NewReplacer("/", "-", ".", "-", "_", "-").Replace(wd)
+	enc := encodeDir(wd)
 	files, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", enc, "*.jsonl"))
 	if len(files) == 0 {
 		return "", fmt.Errorf("no Claude Code sessions found for %s", wd)
@@ -149,6 +156,153 @@ func mtime(p string) int64 {
 	return 0
 }
 
+const explainPrompt = `You are explaining a change to a human reviewer who has not read the code. Do not edit any files.
+
+The full change is in the file %[3]s (a git diff from %[1]s to %[2]s) and the commit messages are in %[4]s. Read both files with the Read tool; you can also read any file in the project for context.
+
+1. Read the diff and the commit messages.
+2. For each meaningful design decision in the change, call record_decision: a short title (at most 8 words), why it was done in one or two plain sentences, the files it touches, alternatives the author visibly rejected, and the risk. Use only what the code, comments and commit messages show. If they don't say why, write "The change doesn't say why."
+3. Where the change alters what the software does and you can show it with a command that runs locally within a couple of minutes, call show_behavior. grasp runs the command on %[1]s (before) and on the current code (now). Print one short line per case. Prefer existing tests or the program's own commands; skip anything that needs production services or credentials.
+4. End with two sentences: what a reviewer should look at first, and why.`
+
+func runPR(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("pr", flag.ExitOnError)
+	base := fs.String("base", "", "commit or branch the change starts from (required)")
+	head := fs.String("head", "HEAD", "last commit of the change")
+	title := fs.String("title", "", "pull request title")
+	body := fs.String("body", "", "pull request description")
+	explain := fs.Bool("explain", false, "ask Claude Code to record decisions and runnable examples")
+	timeout := fs.Duration("timeout", 4*time.Minute, "time limit for each example run")
+	_ = fs.Parse(args)
+	if *base == "" {
+		return errors.New("-base is required")
+	}
+	wd, _ := os.Getwd()
+	st, err := store.Open(wd)
+	if err != nil {
+		return err
+	}
+	se, err := session.FromGit(wd, *base, *head, *title, *body)
+	if err != nil {
+		return err
+	}
+	if *explain {
+		baseSHA := behavior.BaseCommit(wd)
+		if out, err := exec.Command("git", "-C", wd, "rev-parse", *base).Output(); err == nil {
+			baseSHA = strings.TrimSpace(string(out))
+		}
+		fmt.Println("grasp: asking Claude Code to explain the change (this takes a few minutes)...")
+		ex, err := explainWithClaude(ctx, wd, baseSHA, *head, *timeout)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "grasp: explanation failed, keeping commit messages:", err)
+		} else {
+			session.MergeExplanation(se, ex)
+		}
+	}
+	if err := st.SaveSession(se); err != nil {
+		return err
+	}
+	fmt.Printf("loaded %q: %d decisions, %d examples, %d changed files. Run `grasp serve` to review.\n",
+		se.Title, len(se.Decisions), len(se.Behaviors), countEdits(se))
+	return nil
+}
+
+func explainWithClaude(ctx context.Context, dir, base, head string, timeout time.Duration) (*session.Session, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	cfg, err := os.CreateTemp("", "grasp-mcp-*.json")
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(cfg.Name())
+	json.NewEncoder(cfg).Encode(map[string]any{"mcpServers": map[string]any{"grasp": map[string]any{
+		"command": exe, "args": []string{"mcp", "-base", base, "-timeout", timeout.String()}}}})
+	cfg.Close()
+	// Hand Claude the change as files, so it needs no shell access to read it.
+	diff, err := exec.Command("git", "-C", dir, "diff", base, head).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git diff: %w", err)
+	}
+	logOut, err := exec.Command("git", "-C", dir, "log", "--format=commit %h%n%B", base+".."+head).Output()
+	if err != nil {
+		return nil, fmt.Errorf("git log: %w", err)
+	}
+	work := filepath.Join(dir, ".grasp", "pr")
+	if err := os.MkdirAll(work, 0o755); err != nil {
+		return nil, err
+	}
+	diffPath, logPath := filepath.Join(work, "change.diff"), filepath.Join(work, "commits.txt")
+	if err := os.WriteFile(diffPath, diff, 0o644); err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(logPath, logOut, 0o644); err != nil {
+		return nil, err
+	}
+	cmd := exec.CommandContext(ctx, "claude", "-p", fmt.Sprintf(explainPrompt, base, head, diffPath, logPath),
+		"--mcp-config", cfg.Name(), "--strict-mcp-config",
+		"--allowedTools", "mcp__grasp__record_decision,mcp__grasp__show_behavior,mcp__grasp__get_review_feedback,Read,Grep,Glob",
+		"--disallowedTools", "Edit,Write,MultiEdit,NotebookEdit",
+		"--output-format", "json")
+	cmd.Dir = dir
+	cmd.Stderr = os.Stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("claude: %w", err)
+	}
+	var res struct {
+		SessionID string `json:"session_id"`
+		Result    string `json:"result"`
+	}
+	if err := json.Unmarshal(out, &res); err != nil || res.SessionID == "" {
+		return nil, fmt.Errorf("unexpected claude output: %.200s", out)
+	}
+	path, err := transcriptFor(dir, res.SessionID)
+	if err != nil {
+		return nil, err
+	}
+	ex, err := session.ParseClaudeFile(path)
+	if err != nil {
+		return nil, err
+	}
+	if len(ex.Decisions) == 0 && len(ex.Behaviors) == 0 {
+		return nil, fmt.Errorf("Claude recorded nothing. Its last words: %.400s", res.Result)
+	}
+	return ex, nil
+}
+
+// transcriptFor finds a Claude Code session's transcript for a folder.
+func transcriptFor(dir, id string) (string, error) {
+	home, _ := os.UserHomeDir()
+	if real, err := filepath.EvalSymlinks(dir); err == nil {
+		dir = real
+	}
+	p := filepath.Join(home, ".claude", "projects", encodeDir(dir), id+".jsonl")
+	if _, err := os.Stat(p); err == nil {
+		return p, nil
+	}
+	matches, _ := filepath.Glob(filepath.Join(home, ".claude", "projects", "*", id+".jsonl"))
+	if len(matches) > 0 {
+		return matches[0], nil
+	}
+	return "", fmt.Errorf("transcript for session %s not found", id)
+}
+
+func encodeDir(dir string) string {
+	return strings.NewReplacer("/", "-", ".", "-", "_", "-").Replace(dir)
+}
+
+func countEdits(se *session.Session) int {
+	n := 0
+	for _, e := range se.Events {
+		if e.Kind == session.KindEdit {
+			n++
+		}
+	}
+	return n
+}
+
 func runFeedback() error {
 	st, err := openHere()
 	if err != nil {
@@ -162,14 +316,21 @@ func runFeedback() error {
 	return nil
 }
 
-func runMCP(ctx context.Context) error {
+func runMCP(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
+	base := fs.String("base", "", "commit examples compare against (default: HEAD when the agent starts)")
+	timeout := fs.Duration("timeout", 90*time.Second, "time limit for each example run")
+	_ = fs.Parse(args)
 	st, err := openHere()
 	if err != nil {
 		return err
 	}
 	wd, _ := os.Getwd()
-	// The code as it is when the agent starts is the "before" for examples.
-	o := mcpserver.Options{Version: version, Dir: wd, Base: behavior.BaseCommit(wd)}
+	o := mcpserver.Options{Version: version, Dir: wd, Base: *base, Timeout: *timeout}
+	if o.Base == "" {
+		// The code as it is when the agent starts is the "before" for examples.
+		o.Base = behavior.BaseCommit(wd)
+	}
 	return mcpserver.New(st, o).Run(ctx, &mcp.StdioTransport{})
 }
 

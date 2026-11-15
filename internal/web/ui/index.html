@@ -311,9 +311,13 @@ function riskHTML() {
       <div style="color:var(--mute);margin-top:4px">${t.removed_checks ? `${t.removed_checks} check${t.removed_checks > 1 ? "s" : ""} removed. ` : ""}Make sure the test still checks the right thing and wasn't changed just to make the code pass.</div>
       <button class="link" data-testdiff="${esc(t.file)}" style="margin-top:8px">${open === "t:" + t.file ? "Hide" : "See"} the test change</button>
       ${open === "t:" + t.file ? t.edits.map(s => diffHTML(S.events[s - 1])).join("") : ""}</div>`;
-  for (const r of I.ripples) h += `<div class="risk"><div class="t">🔗 <code>${esc(r.symbol)}</code> ${r.removed ? "was deleted" : "was changed"}${name(r.decision) ? ` (${esc(name(r.decision))})` : ""}</div>
-      <div style="color:var(--mute);margin-top:4px">${r.removed ? "It is still used here, so this code may no longer build or run:" : `It is also used here, in code the agent didn't touch. These places now get the new behavior:`}</div>
+  const loud = I.ripples.filter(r => !r.added_only), quiet = I.ripples.filter(r => r.added_only);
+  for (const r of loud) h += `<div class="risk"><div class="t">🔗 <code>${esc(r.symbol)}</code> ${r.removed ? "was deleted" : "was changed"}${name(r.decision) ? ` (${esc(name(r.decision))})` : ""}</div>
+      <div style="color:var(--mute);margin-top:4px">${r.removed ? "It is still used here, so this code may no longer build or run:" : `It is also used here, in code that wasn't changed. These places now get the new behavior:`}</div>
       <ul>${r.uses.map(u => `<li><span>${esc(u.file)}:${u.line}</span>  ${esc(u.text)}</li>`).join("")}</ul></div>`;
+  if (quiet.length) h += `<div class="risk calm"><div class="t">➕ Added to shared code (usually safe)</div>
+      <div style="color:var(--mute);margin-top:4px">Lines were only added here, nothing existing was changed. Worth a glance if other code relies on the exact shape.</div>
+      <ul>${quiet.map(r => `<li><span>${esc(r.file)}</span>  ${esc(r.symbol)} <span>· used in ${r.uses.length}${r.uses.length >= 8 ? "+" : ""} other place${r.uses.length > 1 ? "s" : ""}</span></li>`).join("")}</ul></div>`;
   if (!h) h = I.note ? `<div class="note info">Couldn't check: ${esc(I.note)}.</div>`
     : `<div class="risk calm"><div class="t">✓ Nothing found</div><div style="color:var(--mute);margin-top:4px">No existing tests were changed, and nothing else in the project uses the changed code (searched ${I.searched} file${I.searched === 1 ? "" : "s"}).</div></div>`;
   return h;
@@ -328,6 +332,9 @@ function renderOverview() {
     ${bs.map(b => behaviorHTML(b, { click: true, predict: true, lines: 5 })).join("")}
     ${bs.some(b => !shownNow(b)) ? `<button class="link" id="showAll">Skip guessing, show all</button>` : ""}`
     : `<div class="note info">The agent didn't demonstrate any change, so there are no before/after examples.</div>`}
+    ${(() => { if (!String(S.agent).startsWith("git+")) return ""; const says = S.events.filter(e => e.kind === "say"); if (!says.length) return "";
+        const paras = says[says.length - 1].text.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean); const tip = paras[paras.length - 1];
+        return `<h2 class="sec">Where to look first</h2><div class="risk" style="border-left-color:var(--accent)"><div>${esc(tip).replace(/`([^`]+)`/g, "<code>$1</code>").replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")}</div><div style="color:var(--mute);font-size:13px;margin-top:6px">Suggested by Claude after reading the whole change.</div></div>`; })()}
     <h2 class="sec">What it could break</h2>
     <p class="lead" style="font-size:16px">grasp checked the project itself. The agent didn't write this part.</p>
     ${riskHTML()}
@@ -348,7 +355,7 @@ function renderCard(d) {
   if ((d.unverified || []).length) notes.push(`<div class="note warn">⚠ It said it would change <b>${esc(d.unverified.join(", "))}</b>, but never did.</div>`);
   if (surprised(d)) notes.push(`<div class="note warn">😮 One of its examples surprised you. Read the full reasoning before you approve.</div>`);
   for (const t of I.tests.filter(t => (t.decisions || []).includes(d.id))) notes.push(`<div class="note warn">🧪 It changed an existing test, <b>${esc(t.file)}</b>${t.removed_checks ? `, and removed ${t.removed_checks} check${t.removed_checks > 1 ? "s" : ""}` : ""}. Check it wasn't weakened to pass.</div>`);
-  for (const r of I.ripples.filter(r => r.decision === d.id)) notes.push(`<div class="note warn">🔗 <b>${esc(r.symbol)}</b> ${r.removed ? "was deleted but is still used" : "is also used"} in ${r.uses.length} place${r.uses.length > 1 ? "s" : ""} the agent didn't touch: ${r.uses.slice(0, 3).map(u => `<code>${esc(u.file)}:${u.line}</code>`).join(", ")}${r.uses.length > 3 ? "…" : ""}</div>`);
+  for (const r of I.ripples.filter(r => r.decision === d.id && !r.added_only)) notes.push(`<div class="note warn">🔗 <b>${esc(r.symbol)}</b> ${r.removed ? "was deleted but is still used" : "is also used"} in ${r.uses.length} place${r.uses.length > 1 ? "s" : ""} the agent didn't touch: ${r.uses.slice(0, 3).map(u => `<code>${esc(u.file)}:${u.line}</code>`).join(", ")}${r.uses.length > 3 ? "…" : ""}</div>`);
   if (d.inferred) notes.push(`<div class="note info">The agent didn't explain this step, so grasp grouped these edits using what it said.</div>`);
   const hasMore = !d.unexplained && ((d.why && d.why.length > why.length) || (d.alternatives || []).length || d.risk);
   $("#main").innerHTML = `<div class="card in">
