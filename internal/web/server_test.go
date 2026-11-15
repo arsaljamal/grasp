@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,5 +41,22 @@ func TestReviewRoundTrip(t *testing.T) {
 	}
 	if res, _ := http.Get(srv.URL + "/"); res.StatusCode != 200 {
 		t.Fatal("page not served")
+	}
+}
+
+// The page script must parse; a syntax error there breaks the whole page.
+func TestPageScriptParses(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not installed")
+	}
+	s := string(page)
+	start, end := strings.Index(s, "<script>"), strings.LastIndex(s, "</script>")
+	f := filepath.Join(t.TempDir(), "page.js")
+	if err := os.WriteFile(f, []byte(s[start+len("<script>"):end]), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := exec.Command(node, "--check", f).CombinedOutput(); err != nil {
+		t.Fatalf("page script does not parse:\n%s", out)
 	}
 }

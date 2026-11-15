@@ -44,3 +44,16 @@ rejected alternatives and risks, and changed four files. All 36 tests passed wit
 session shows "Claude read reviewer feedback" as its first step, then the decision and its 15 edits.
 
 Cost of both runs: about $1.30 of model usage.
+
+## 4. Show, don't tell (added later)
+
+On a fresh copy of the same service, with `show_behavior` available, Claude recorded 4 decisions and
+demonstrated 2 of them. grasp ran each example on the original code and on the new code:
+
+| Example | Before | Now |
+|---|---|---|
+| Burst past 10 requests | `201` ×12 | `201` ×10, then `429` with `Retry-After: 1` |
+| `{"done":true}` (no title) | `201`, saved a todo with an empty title | `400 title is required` |
+| `{"id":99,"title":"x"}` | `201`, client chose its own id | `400 unknown field "id"` |
+
+The tests decision had no example, and grasp says so on its card.

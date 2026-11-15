@@ -102,6 +102,23 @@ pre.fb{text-align:left;white-space:pre-wrap;background:var(--soft);padding:14px;
 .bar i{display:block;height:100%;background:var(--accent);transition:width .3s}
 .controls{display:flex;gap:10px;align-items:center;margin-top:16px}
 .controls .step{margin-left:auto;color:var(--mute);font-size:14px}
+.ev{border:1px solid var(--line);border-radius:14px;padding:14px;margin:14px 0}
+.ev .t{font-weight:700;margin-bottom:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.ev .pair{display:grid;grid-template-columns:1fr auto 1fr;gap:10px;align-items:stretch}
+@media (max-width:640px){.ev .pair{grid-template-columns:1fr}.ev .to{transform:rotate(90deg);justify-self:center}}
+.side{border-radius:10px;padding:8px 10px;min-width:0}
+.side .lbl{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+.side.before{background:var(--soft)}.side.before .lbl{color:var(--mute)}
+.side.after{background:var(--okbg)}.side.after .lbl{color:var(--ok)}
+.side.after.same{background:var(--warnbg)}.side.after.same .lbl{color:var(--warn)}
+.side pre{margin:0;font:13px/1.45 ui-monospace,Menlo,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto}
+.side .skip{font-style:italic;color:var(--mute);font-size:14px}
+.ev .to{align-self:center;font-size:22px;color:var(--accent)}
+.ev .foot{margin-top:8px;font-size:13px;color:var(--mute);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.ev .foot .okk{color:var(--ok);font-weight:600}.ev .foot .bad{color:var(--warn);font-weight:600}
+.ev details summary{cursor:pointer}
+.ev.click{cursor:pointer}.ev.click:hover{border-color:var(--accent)}
+.lead{font-size:18px;color:var(--mute);margin:0 0 6px}
 code{font:0.9em ui-monospace,Menlo,monospace;background:var(--soft);padding:1px 6px;border-radius:6px}
 .empty{text-align:center;color:var(--mute);padding:60px 20px}
 .keys{margin-top:14px;font-size:13px;color:var(--mute);text-align:center}
@@ -125,7 +142,8 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const KINDS = {architecture:["🏛","Architecture"],"data-model":["🗃","Data model"],api:["🔌","API"],"business-rule":["📏","Business rule"],
   dependency:["📦","New dependency"],security:["🔒","Security"],performance:["⚡","Performance"],testing:["🧪","Tests"],quality:["✨","Code quality"],other:["•","Change"]};
-const UNEXPLAINED = "__unexplained__";
+const UNEXPLAINED = "__unexplained__", OVERVIEW = "__overview__";
+const reviewable = d => !d.unexplained && !d.overview;
 let S = null, R = {}, items = [], idx = 0, tab = "review", sessionId = "", open = "";
 let watch = { pos: 0, timer: null };
 let me = ""; try { me = localStorage.getItem("grasp.name") || ""; } catch {}
@@ -152,7 +170,9 @@ async function load(keep) {
   const res = await (await fetch("api/session?id=" + encodeURIComponent(sessionId))).json();
   S = res.session; R = res.reviews || {};
   S.events = S.events || []; S.decisions = S.decisions || []; S.unexplained = S.unexplained || [];
+  S.behaviors = S.behaviors || [];
   items = S.decisions.slice().sort((a, b) => a.seq - b.seq);
+  if (S.behaviors.length) items.unshift({ id: OVERVIEW, overview: true, title: "What changed for users", seq: 0 });
   if (S.unexplained.length) items.push({ id: UNEXPLAINED, kind: "other", title: "Changes with no reason given", edits: S.unexplained,
     files: [...new Set(S.unexplained.map(s => S.events[s - 1].file))], unexplained: true, seq: Math.min(...S.unexplained) });
   if (!keep) { idx = firstPending(); watch.pos = 0; }
@@ -160,7 +180,7 @@ async function load(keep) {
   render();
 }
 
-function firstPending() { const i = items.findIndex(d => !d.unexplained && !verdict(d.id)); return i < 0 ? items.length : i; }
+function firstPending() { if (items[0] && items[0].overview && !Object.keys(R).length) return 0; const i = items.findIndex(d => reviewable(d) && !verdict(d.id)); return i < 0 ? items.length : i; }
 
 function render() {
   const prompt = S.events.find(e => e.kind === "prompt");
@@ -169,17 +189,19 @@ function render() {
   $("#keys").style.display = tab === "review" ? "" : "none";
   if (tab === "watch") return renderWatch();
   if (idx >= items.length) return renderDone();
+  if (items[idx].overview) return renderOverview();
   renderCard(items[idx]);
 }
 
 function renderStrip(lit) {
-  const reviewable = items.filter(d => !d.unexplained);
-  const done = reviewable.filter(d => verdict(d.id)).length;
+  const rev = items.filter(reviewable);
+  const done = rev.filter(d => verdict(d.id)).length;
   $("#strip").innerHTML = items.map((d, i) => {
     const v = d.unexplained ? "warn" : verdict(d.id);
-    const label = d.unexplained ? "?" : (v === "approved" ? "✓" : v === "rejected" ? "✗" : i + 1);
+    const n = items.slice(0, i + 1).filter(x => !x.overview).length;
+    const label = d.overview ? "👁" : d.unexplained ? "?" : (v === "approved" ? "✓" : v === "rejected" ? "✗" : n);
     return `<button class="dot ${v} ${tab === "review" && i === idx ? "on" : ""} ${lit === d.id ? "lit" : ""}" data-i="${i}" title="${esc(short(d.title))}">${label}</button>`;
-  }).join("") + `<span class="progress">${done} of ${reviewable.length} reviewed</span>`;
+  }).join("") + `<span class="progress">${done} of ${rev.length} reviewed</span>`;
   document.querySelectorAll(".dot").forEach(b => b.onclick = () => { tab = "review"; setTab(); stopPlay(); idx = +b.dataset.i; open = ""; render(); });
 }
 
@@ -236,6 +258,38 @@ function diffHTML(e) {
   return `<div class="diff"><div class="hd">${esc(e.file)} · ${e.new_file ? "new file" : `+${c.add} −${c.del}`}</div><pre>${html}</pre></div>`;
 }
 
+function firstLines(t, n) { const l = String(t || "").split("\n"); return l.length > n ? l.slice(0, n).join("\n") + `\n… ${l.length - n} more lines` : l.join("\n"); }
+function sideHTML(r, cls, label, maxLines) {
+  if (r.skipped) return `<div class="side ${cls}"><div class="lbl">${label}</div><div class="skip">Not run: ${esc(r.skipped)}</div></div>`;
+  const extra = r.timed_out ? " · stopped (too slow)" : r.exit ? ` · exit code ${r.exit}` : "";
+  return `<div class="side ${cls}"><div class="lbl">${label}${extra}</div><pre>${esc(firstLines(String(r.output || "").replace(/\r/g, "") || "(printed nothing)", maxLines))}</pre></div>`;
+}
+function behaviorHTML(b, opts = {}) {
+  const same = !b.changed && !b.before?.skipped;
+  const ran = b.after && (b.after.millis || b.after.output !== undefined);
+  const lines = opts.lines || 8;
+  const foot = !ran ? `<span class="bad">⚠ grasp has no output for this example</span>`
+    : same ? `<span class="bad">⚠ Same output before and now: this example shows no change</span>`
+    : `<span class="okk">✓ grasp ran this on the old and the new code</span>`;
+  return `<div class="ev ${opts.click ? "click" : ""}" ${opts.click ? `data-go="${esc(b.decision_id || "")}"` : ""}>
+    <div class="t">🔬 ${esc(b.title)}</div>
+    ${ran ? `<div class="pair">${sideHTML(b.before || {}, "before", "Before", lines)}<div class="to">→</div>${sideHTML(b.after || {}, "after" + (same ? " same" : ""), "Now", lines)}</div>` : ""}
+    <div class="foot">${foot}${b.expect ? `<span>Agent expected: ${esc(b.expect)}</span>` : ""}
+      ${opts.click ? "" : `<details><summary>How it was run</summary><code>${esc(b.command)}</code></details>`}</div></div>`;
+}
+
+function renderOverview() {
+  const bs = S.behaviors.slice().sort((a, b) => a.seq - b.seq);
+  $("#main").innerHTML = `<div class="card in">
+    <span class="kind"><span class="ico">👁</span>Start here</span>
+    <h1>What changed for users</h1>
+    <p class="lead">grasp ran each example on the code from before and on the code now. These are real outputs, not descriptions.</p>
+    ${bs.map(b => behaviorHTML(b, { click: true, lines: 5 })).join("")}
+    <div class="actions"><button class="big ok" id="start" style="background:var(--accent)">Review the decisions →</button></div></div>`;
+  $("#start").onclick = () => move(1);
+  document.querySelectorAll("[data-go]").forEach(el => el.onclick = () => { const i = items.findIndex(d => d.id === el.dataset.go); if (i >= 0) { idx = i; open = ""; render(); } });
+}
+
 function renderCard(d) {
   const k = KINDS[d.kind] || KINDS.other, v = verdict(d.id), rv = R[d.id] || {};
   const edits = (d.edits || []).map(s => S.events[s - 1]);
@@ -245,11 +299,13 @@ function renderCard(d) {
   if (d.inferred) notes.push(`<div class="note info">The agent didn't explain this step, so grasp grouped these edits using what it said.</div>`);
   const hasMore = !d.unexplained && ((d.why && d.why.length > why.length) || (d.alternatives || []).length || d.risk);
   $("#main").innerHTML = `<div class="card in">
-    <span class="kind"><span class="ico">${k[0]}</span>${d.unexplained ? "Needs a look" : esc(k[1])} · ${idx + 1} of ${items.length}</span>
+    <span class="kind"><span class="ico">${k[0]}</span>${d.unexplained ? "Needs a look" : esc(k[1])} · ${items.slice(0, idx + 1).filter(x => !x.overview).length} of ${items.filter(x => !x.overview).length}</span>
     ${v ? `<span class="status ${v}">${v === "approved" ? "✓ Approved" : "✗ Rejected"}</span>` : ""}
     <h1>${esc(short(d.title))}</h1>
     <p class="why">${esc(why)}</p>
     ${notes.join("")}
+    ${d.unexplained ? "" : (() => { const bs = S.behaviors.filter(b => b.decision_id === d.id);
+        return bs.length ? bs.map(b => behaviorHTML(b)).join("") : `<div class="note info">Not shown: the agent didn't demonstrate this change, so you only have its description and the code.</div>`; })()}
     ${mapSVG(d)}
     ${d.unexplained ? `<div class="actions"><button class="big ghost" id="next">Next →</button></div>` : `
     <div class="actions">
@@ -296,14 +352,14 @@ async function decide(d, v, comment) {
 }
 
 function nextPending(from) {
-  for (let i = from + 1; i < items.length; i++) if (!items[i].unexplained && !verdict(items[i].id)) return i;
-  for (let i = 0; i < items.length; i++) if (!items[i].unexplained && !verdict(items[i].id)) return i;
+  for (let i = from + 1; i < items.length; i++) if (reviewable(items[i]) && !verdict(items[i].id)) return i;
+  for (let i = 0; i < items.length; i++) if (reviewable(items[i]) && !verdict(items[i].id)) return i;
   return items.length;
 }
 function move(step) { open = ""; idx = Math.max(0, Math.min(items.length, idx + step)); render(); }
 
 async function renderDone() {
-  const rev = items.filter(d => !d.unexplained), a = rev.filter(d => verdict(d.id) === "approved").length, r = rev.filter(d => verdict(d.id) === "rejected").length;
+  const rev = items.filter(reviewable), a = rev.filter(d => verdict(d.id) === "approved").length, r = rev.filter(d => verdict(d.id) === "rejected").length;
   const fb = r || rev.some(d => (R[d.id]?.comments || []).length) ? await (await fetch("api/feedback")).text() : "";
   $("#main").innerHTML = `<div class="card done in">
     <div class="big-ico">${r ? "📝" : "🎉"}</div>
@@ -322,6 +378,8 @@ function sentence(e) {
   switch (e.kind) {
     case "prompt": return ["💬", "You asked", e.text];
     case "say": return ["🗨", `${who} said`, e.text];
+    case "behavior": { const b = S.behaviors.find(b => b.seq === e.seq); const f = r => r?.skipped ? "not run" : String(r?.output || "").split("\n")[0];
+      return ["🔬", `grasp ran an example: ${e.text}`, b ? `before: ${f(b.before)}   →   now: ${f(b.after)}` : ""]; }
     case "feedback": return ["📥", `${who} checked for your review feedback`, ""];
     case "decision": { const d = S.decisions.find(d => d.id === e.decision_id); const k = KINDS[d?.kind] || KINDS.other; return [k[0], `${who} decided: ${short(e.text)}`, d ? firstSentence(d.why) : ""]; }
     case "edit": { const c = counts(e); return ["✎", `${who} ${e.new_file ? "created" : "changed"} ${e.file}`, e.new_file ? `${c.add} lines` : `+${c.add} −${c.del} lines`]; }
@@ -362,8 +420,8 @@ document.addEventListener("keydown", e => {
   const d = items[idx];
   if (e.key === "ArrowRight") move(1);
   else if (e.key === "ArrowLeft") move(-1);
-  else if (e.key === "a" && d && !d.unexplained) decide(d, "approved", "");
-  else if (e.key === "r" && d && !d.unexplained) { e.preventDefault(); askReject(d); }
+  else if (e.key === "a" && d && reviewable(d)) decide(d, "approved", "");
+  else if (e.key === "r" && d && reviewable(d)) { e.preventDefault(); askReject(d); }
 });
 load().then(() => {
   try { const es = new EventSource("api/live"); let first = true;

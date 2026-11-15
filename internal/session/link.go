@@ -14,6 +14,7 @@ import (
 // Otherwise, edits no decision names are left unexplained, so a reviewer
 // sees exactly which changes came with no reason.
 func Link(s *Session) {
+	defer linkBehaviors(s)
 	s.Unexplained = nil
 	for i := range s.Decisions {
 		s.Decisions[i].Edits, s.Decisions[i].Unverified = nil, nil
@@ -135,4 +136,38 @@ func dist(a, b int) int {
 		return a - b
 	}
 	return b - a
+}
+
+// linkBehaviors ties each example to the decision it names, or else to the
+// latest decision recorded before it.
+func linkBehaviors(s *Session) {
+	for i := range s.Behaviors {
+		bh := &s.Behaviors[i]
+		bh.DecisionID = ""
+		want := strings.ToLower(strings.TrimSpace(bh.Decision))
+		for _, d := range s.Decisions {
+			t := strings.ToLower(d.Title)
+			if want != "" && (t == want || strings.HasPrefix(t, want) || strings.HasPrefix(want, t)) {
+				bh.DecisionID = d.ID
+				break
+			}
+		}
+		if bh.DecisionID != "" {
+			continue
+		}
+		for _, d := range s.Decisions {
+			if d.Seq < bh.Seq && !d.Inferred {
+				bh.DecisionID = d.ID
+			}
+		}
+	}
+	for i := range s.Events {
+		if e := &s.Events[i]; e.Kind == KindBehavior {
+			for _, bh := range s.Behaviors {
+				if bh.Seq == e.Seq {
+					e.DecisionID = bh.DecisionID
+				}
+			}
+		}
+	}
 }

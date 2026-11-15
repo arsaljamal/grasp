@@ -9,10 +9,23 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/arsaljamal/grasp/internal/behavior"
 )
 
-// DecisionTool is the MCP tool name suffix agents call to record a decision.
-const DecisionTool = "record_decision"
+// MCP tool name suffixes agents call.
+const (
+	DecisionTool = "record_decision"
+	BehaviorTool = "show_behavior"
+)
+
+// BehaviorInput is what an agent passes to show_behavior.
+type BehaviorInput struct {
+	Title    string `json:"title" jsonschema:"what the example shows, at most 8 words, e.g. Empty title is rejected"`
+	Command  string `json:"command" jsonschema:"shell command run from the project root; print one short line per case, like: empty title -> 400 title is required; start and stop anything it needs, e.g. a server, within the command"`
+	Expect   string `json:"expect,omitempty" jsonschema:"what the new code should print, in plain words"`
+	Decision string `json:"decision,omitempty" jsonschema:"title of the decision this example demonstrates"`
+}
 
 // DecisionInput is what an agent passes to record_decision.
 type DecisionInput struct {
@@ -55,6 +68,24 @@ type block struct {
 	Input     json.RawMessage `json:"input"`
 	ToolUseID string          `json:"tool_use_id"`
 	IsError   bool            `json:"is_error"`
+	Content   json.RawMessage `json:"content"`
+}
+
+// text returns a tool result's text, whether stored as a string or blocks.
+func (b block) text() string {
+	var s string
+	if json.Unmarshal(b.Content, &s) == nil {
+		return s
+	}
+	var parts []block
+	_ = json.Unmarshal(b.Content, &parts)
+	var out []string
+	for _, p := range parts {
+		if p.Type == "text" {
+			out = append(out, p.Text)
+		}
+	}
+	return strings.Join(out, "\n")
 }
 
 // ParseClaudeFile reads a Claude Code transcript (.jsonl).
@@ -146,6 +177,9 @@ func (b *builder) add(l line) {
 			if bl.IsError {
 				s.Events[i].Failed = true
 			}
+			if e := &s.Events[i]; e.Kind == KindBehavior && !bl.IsError {
+				b.behaviorResult(e, bl.text())
+			}
 			var wr writeResult
 			if e := &s.Events[i]; e.Tool == "Write" && json.Unmarshal(l.Result, &wr) == nil && wr.Type == "update" {
 				e.NewFile, e.Before = false, wr.OriginalFile
@@ -203,10 +237,34 @@ func (b *builder) tool(t time.Time, bl block) {
 			ID: bl.ID, Seq: len(b.s.Events), Turn: b.turn, Title: d.Title, Kind: normKind(d.Kind),
 			Why: d.Why, Alternatives: d.Alternatives, Risk: d.Risk, Files: d.Files,
 		})
+	case strings.HasSuffix(bl.Name, BehaviorTool):
+		var in BehaviorInput
+		_ = json.Unmarshal(bl.Input, &in)
+		b.emit(Event{Time: t, Kind: KindBehavior, Tool: bl.Name, Text: in.Title})
+		b.s.Behaviors = append(b.s.Behaviors, Behavior{ID: bl.ID, Seq: len(b.s.Events), Title: in.Title,
+			Command: in.Command, Expect: in.Expect, Decision: in.Decision})
 	case strings.HasSuffix(bl.Name, "get_review_feedback"):
 		b.emit(Event{Time: t, Kind: KindFeedback, Tool: bl.Name})
 	default:
 		b.emit(Event{Time: t, Kind: KindTool, Tool: bl.Name, Text: firstLine(string(bl.Input), 160)})
+	}
+}
+
+// behaviorResult fills in the before/after runs grasp returned for a
+// show_behavior call. Only grasp writes that result, so it is evidence, not
+// the agent's claim.
+func (b *builder) behaviorResult(e *Event, text string) {
+	for i := range b.s.Behaviors {
+		bh := &b.s.Behaviors[i]
+		if bh.Seq != e.Seq {
+			continue
+		}
+		var r struct {
+			Result behavior.Result `json:"result"`
+		}
+		if json.Unmarshal([]byte(text), &r) == nil {
+			bh.Result = r.Result
+		}
 	}
 }
 

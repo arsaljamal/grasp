@@ -89,3 +89,20 @@ func TestOneEditServesSeveralDecisions(t *testing.T) {
 		}
 	}
 }
+
+func TestBehaviorEvidenceIsParsedAndLinked(t *testing.T) {
+	s, err := ParseClaudeFile("../../testdata/decided.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s.Behaviors) != 1 {
+		t.Fatalf("behaviors = %d", len(s.Behaviors))
+	}
+	b := s.Behaviors[0]
+	if b.Title != "11th request is limited" || b.Before.Output != "201" || b.After.Output != "429" || !b.Changed {
+		t.Fatalf("behavior = %+v", b)
+	}
+	if b.DecisionID != "d1" {
+		t.Fatalf("linked to %q, want the earlier decision d1", b.DecisionID)
+	}
+}

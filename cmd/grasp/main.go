@@ -18,6 +18,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/arsaljamal/grasp/internal/behavior"
 	"github.com/arsaljamal/grasp/internal/mcpserver"
 	"github.com/arsaljamal/grasp/internal/store"
 	"github.com/arsaljamal/grasp/internal/web"
@@ -166,7 +167,10 @@ func runMCP(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return mcpserver.New(st, version).Run(ctx, &mcp.StdioTransport{})
+	wd, _ := os.Getwd()
+	// The code as it is when the agent starts is the "before" for examples.
+	o := mcpserver.Options{Version: version, Dir: wd, Base: behavior.BaseCommit(wd)}
+	return mcpserver.New(st, o).Run(ctx, &mcp.StdioTransport{})
 }
 
 // runHook imports the session that triggered the hook. It never fails the
@@ -192,13 +196,18 @@ func runHook(r io.Reader) {
 	}
 }
 
-const claudeNote = `
-## Decisions for review (grasp)
+const claudeNote = `<!-- grasp -->
+## Work for review (grasp)
 
-Reviewers read your work as decisions through grasp. Before changing code for a
-non-trivial reason, call the ` + "`record_decision`" + ` tool once per decision (what, why,
-files, alternatives, risk). At the start of a task, call ` + "`get_review_feedback`" + ` and
-follow it. Small mechanical edits need no decision.
+Reviewers read your work through grasp.
+- At the start of a task, call ` + "`get_review_feedback`" + ` and follow it.
+- Before changing code for a non-trivial reason, call ` + "`record_decision`" + ` once per
+  decision (short title, why, files, alternatives, risk). Small mechanical edits need none.
+- After a change that alters what the software does, call ` + "`show_behavior`" + ` with a
+  command that demonstrates it. grasp runs it on the old and the new code and shows
+  reviewers both outputs. Print one short line per case ("empty title -> 400"); start and
+  stop servers inside the command.
+<!-- /grasp -->
 `
 
 func runInit() error {
@@ -221,28 +230,46 @@ func runInit() error {
 	hookCmd := bin + " hook"
 	if err := mergeJSON(filepath.Join(".claude", "settings.json"), func(m map[string]any) bool {
 		hooks := child(m, "hooks")
-		a := addHook(hooks, "PostToolUse", "Edit|Write|MultiEdit|mcp__grasp__record_decision", hookCmd)
+		a := addHook(hooks, "PostToolUse", "Edit|Write|MultiEdit|mcp__grasp__.*", hookCmd)
 		b := addHook(hooks, "Stop", "", hookCmd)
 		return a || b
 	}); err != nil {
 		return err
 	}
-	b, _ := os.ReadFile("CLAUDE.md")
-	if !strings.Contains(string(b), "record_decision") {
-		f, err := os.OpenFile("CLAUDE.md", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-		if err != nil {
-			return err
-		}
-		_, err = f.WriteString(claudeNote)
-		f.Close()
-		if err != nil {
-			return err
-		}
+	if changed, err := writeNote("CLAUDE.md"); err != nil {
+		return err
+	} else if changed {
 		fmt.Println("updated CLAUDE.md")
 	}
 	fmt.Println("grasp is set up. Start Claude Code here, then run `grasp serve` to review.")
 	fmt.Println("Tip: add .grasp/ to .gitignore, or commit .grasp/reviews.json to share verdicts.")
 	return nil
+}
+
+// writeNote adds grasp's section to CLAUDE.md, or replaces it if an older
+// version is there.
+func writeNote(path string) (bool, error) {
+	b, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return false, err
+	}
+	s := string(b)
+	start, end := strings.Index(s, "<!-- grasp -->"), strings.Index(s, "<!-- /grasp -->")
+	switch {
+	case start >= 0 && end > start:
+		s = s[:start] + strings.TrimLeft(claudeNote, "\n") + strings.TrimLeft(s[end+len("<!-- /grasp -->"):], "\n")
+	case strings.Contains(s, "record_decision"):
+		return false, nil // an older hand-edited note; leave it alone
+	default:
+		if s != "" && !strings.HasSuffix(s, "\n") {
+			s += "\n"
+		}
+		s += "\n" + claudeNote
+	}
+	if s == string(b) {
+		return false, nil
+	}
+	return true, os.WriteFile(path, []byte(s), 0o644)
 }
 
 func mergeJSON(path string, change func(map[string]any) bool) error {

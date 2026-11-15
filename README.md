@@ -4,14 +4,15 @@
 
 AI agents now write code faster than people can review it. A 2,000-line diff hides the things a reviewer
 actually needs to judge: *it added a cache here, it changed the refund rule, it pulled in a new library.*
-grasp turns an agent's session into those decisions and shows them **one at a time**: a short headline, one
-sentence of why, a picture of the files it touched, and two big buttons. Rejections go back to the agent.
+grasp shows you **what the software does now, compared with before**, using real outputs instead of the
+agent's description. Then it walks you through the agent's decisions one at a time, with two big buttons.
+Rejections go back to the agent.
 
-![grasp review page](docs/img/review.png)
+![A decision in grasp: before and after, run for real](docs/img/review.png)
 
-| Reject with a note for the agent | When you are done |
+| Start here: what changed for users | Reject with a note for the agent |
 |---|---|
-| ![Rejecting a decision](docs/img/reject.png) | ![All decisions reviewed](docs/img/done.png) |
+| ![What changed for users](docs/img/what-changed.png) | ![Rejecting a decision](docs/img/reject.png) |
 
 <details><summary><b>Watch</b> mode: the session as one sentence at a time</summary>
 
@@ -34,6 +35,10 @@ sentence of why, a picture of the files it touched, and two big buttons. Rejecti
      agent calls get_review_feedback (MCP) and follows it next time
 ```
 
+- **Show, don't tell.** The agent gives a short command that demonstrates a change (for example: start the
+  server, send an empty title, print the response). grasp runs it on the code from before the session and on
+  the code now, and shows both outputs side by side. The agent cannot fake them: grasp runs them itself.
+  Decisions with no demonstration say so.
 - **Decisions, not lines.** Each decision shows *why*, the options the agent rejected, the risk it saw, and
   the exact changes that carry it out.
 - **Nothing hides.** Edits that no decision explains are grouped as *changes with no recorded reason*.
@@ -66,11 +71,18 @@ transcript files: `grasp import ~/.claude/projects/<project>/<session>.jsonl`.
 | `grasp serve [-addr]` | The review page, on 127.0.0.1:7080 by default. |
 | `grasp import` | Load Claude Code transcripts. |
 | `grasp feedback` | Print reviewer feedback as Markdown instructions (the same text the agent gets). |
-| `grasp mcp` | The MCP server the agent starts: `record_decision`, `get_review_feedback`. |
+| `grasp mcp` | The MCP server the agent starts: `record_decision`, `show_behavior`, `get_review_feedback`. |
 | `grasp hook` | Claude Code hook entry point. Always exits 0, so it never blocks the agent. |
 
 State lives in `.grasp/` in your project: parsed sessions, `reviews.json` (commit it to share verdicts with
 your team) and `decisions.jsonl` (decisions from agents grasp has no transcript for).
+
+## Safety
+
+`show_behavior` runs shell commands the agent writes, from your project folder, so treat it like giving the
+agent shell access: approve it per call, or allow it only where you would allow the agent's own shell. The
+"before" side runs in a temporary git worktree of the commit the session started on; your working files are
+never touched. Each run is stopped after 90 seconds, along with anything it started in the background.
 
 ## Other agents
 

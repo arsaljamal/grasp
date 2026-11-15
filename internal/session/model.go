@@ -2,7 +2,11 @@
 // session: a timeline of events and the decisions behind the changes.
 package session
 
-import "time"
+import (
+	"time"
+
+	"github.com/arsaljamal/grasp/internal/behavior"
+)
 
 // Event kinds, in the order a reviewer usually cares about them.
 const (
@@ -10,6 +14,7 @@ const (
 	KindSay      = "say"      // what the agent told the human
 	KindDecision = "decision" // the agent recorded a decision
 	KindFeedback = "feedback" // the agent read reviewer feedback
+	KindBehavior = "behavior" // grasp ran an example on old and new code
 	KindEdit     = "edit"     // a file changed
 	KindCommand  = "command"  // a shell command ran
 	KindRead     = "read"     // a file was read
@@ -58,6 +63,19 @@ type Decision struct {
 	Unverified []string `json:"unverified,omitempty"`
 }
 
+// Behavior is an example the agent asked grasp to run on the code before
+// and after its changes, with the real output of both runs.
+type Behavior struct {
+	ID         string `json:"id"`
+	Seq        int    `json:"seq"`
+	Title      string `json:"title"`
+	Command    string `json:"command"`
+	Expect     string `json:"expect,omitempty"`
+	Decision   string `json:"decision,omitempty"`    // decision title the agent named
+	DecisionID string `json:"decision_id,omitempty"` // the decision it was linked to
+	behavior.Result
+}
+
 // Session is everything a reviewer needs for one agent run.
 type Session struct {
 	ID        string     `json:"id"`
@@ -69,6 +87,7 @@ type Session struct {
 	Updated   time.Time  `json:"updated"`
 	Events    []Event    `json:"events"`
 	Decisions []Decision `json:"decisions"`
+	Behaviors []Behavior `json:"behaviors"`
 	// Unexplained are edit Seqs no decision accounts for.
 	Unexplained []int `json:"unexplained"`
 }
