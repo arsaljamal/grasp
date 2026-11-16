@@ -16,6 +16,10 @@ Install in Claude Code (no Go needed):
 Work as usual, then type `/grasp:review`. To see it first on a sample session, type `/grasp:demo`, or without
 Claude Code: `go run github.com/arsaljamal/grasp/cmd/grasp@latest demo`. For a pull request without an agent session, see [PR mode](#reviewing-a-pull-request-no-agent-session).
 
+![grasp in 50 seconds: Claude makes a change, you guess and see the real before/after, grasp flags what else it could break, you reject with a note, and Claude fixes it on its next task](docs/img/demo.gif)
+
+<sub>[Watch as video (MP4)](docs/demo.mp4)</sub>
+
 ![A decision in grasp: before and after, run for real](docs/img/review.png)
 
 | Start here: guess, then see; and what it could break | Reject with a note for the agent |
