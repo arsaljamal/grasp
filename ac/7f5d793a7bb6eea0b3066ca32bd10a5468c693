@@ -1,0 +1,21 @@
+.dockerignore
+  s_6208c722798bf1::t_48f80859b49749 1-3
+Dockerfile
+  s_6208c722798bf1::t_48f80859b49749 1-14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ac7f5d793a7bb6eea0b3066ca32bd10a5468c693",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
