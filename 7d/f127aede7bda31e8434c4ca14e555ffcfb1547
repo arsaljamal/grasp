@@ -1,0 +1,29 @@
+README.md
+  s_6208c722798bf1::t_94d1660a5fe9b8 5-16,69-70
+packaging/mcpb/grasp
+  s_6208c722798bf1::t_de33ae8a015564 1-6
+packaging/mcpb/manifest.json
+  s_6208c722798bf1::t_de33ae8a015564 1-35
+.github/workflows/release.yml
+  s_6208c722798bf1::t_9367b4f364cfee 24,26-30
+plugin/.claude-plugin/plugin.json
+  s_6208c722798bf1::t_e2560dee65d5e1 5
+plugin/scripts/grasp
+  s_6208c722798bf1::t_cefa19ac5484cc 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "7df127aede7bda31e8434c4ca14e555ffcfb1547",
+  "prompts": {},
+  "sessions": {
+    "s_6208c722798bf1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8d29aa3a-3311-4db4-ae6c-98b4ce891645",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Arsal Jamal <arsaljamal2348@gmail.com>"
+    }
+  }
+}
