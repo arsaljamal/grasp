@@ -1,0 +1,33 @@
+#!/bin/sh
+# Runs grasp for the plugin. Uses a grasp already on PATH, otherwise
+# downloads the release that matches this plugin (once) and checks its
+# checksum before using it.
+set -eu
+VERSION=0.1.0
+if command -v grasp >/dev/null 2>&1; then exec grasp "$@"; fi
+
+os=$(uname -s | tr '[:upper:]' '[:lower:]')
+case $(uname -m) in
+  x86_64|amd64) arch=amd64 ;;
+  arm64|aarch64) arch=arm64 ;;
+  *) echo "grasp: unsupported CPU $(uname -m); install with: go install github.com/arsaljamal/grasp/cmd/grasp@latest" >&2; exit 1 ;;
+esac
+dir=${CLAUDE_PLUGIN_DATA:-${XDG_CACHE_HOME:-$HOME/.cache}/grasp}/$VERSION
+bin=$dir/grasp
+if [ ! -x "$bin" ]; then
+  name=grasp_${VERSION}_${os}_${arch}.tar.gz
+  url=https://github.com/arsaljamal/grasp/releases/download/v$VERSION
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  curl -fsSL "$url/$name" -o "$tmp/$name"
+  curl -fsSL "$url/checksums.txt" -o "$tmp/checksums.txt"
+  want=$(grep " $name\$" "$tmp/checksums.txt" | cut -d' ' -f1)
+  if command -v sha256sum >/dev/null 2>&1; then got=$(sha256sum "$tmp/$name" | cut -d' ' -f1)
+  else got=$(shasum -a 256 "$tmp/$name" | cut -d' ' -f1); fi
+  if [ -z "$want" ] || [ "$want" != "$got" ]; then echo "grasp: checksum mismatch for $name" >&2; exit 1; fi
+  mkdir -p "$dir"
+  tar -xzf "$tmp/$name" -C "$tmp"
+  mv "$tmp/grasp" "$bin"
+  chmod +x "$bin"
+fi
+exec "$bin" "$@"

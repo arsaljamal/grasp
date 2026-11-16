@@ -1,0 +1,30 @@
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: go test ./...
+      - name: build
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          mkdir dist
+          for t in darwin/arm64 darwin/amd64 linux/amd64 linux/arm64; do
+            os=${t%/*}; arch=${t#*/}
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$v" -o grasp ./cmd/grasp
+            tar -czf dist/grasp_${v}_${os}_${arch}.tar.gz grasp LICENSE README.md
+            rm grasp
+          done
+          (cd dist && sha256sum *.tar.gz > checksums.txt)
+      - name: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "$GITHUB_REF_NAME" --generate-notes

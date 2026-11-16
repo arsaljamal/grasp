@@ -1,0 +1,16 @@
+{
+  "description": "Saves the session to .grasp after each edit and when Claude stops, so reviewers see the work live.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|mcp__.*grasp.*",
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/grasp\" hook", "timeout": 30 }]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "\"${CLAUDE_PLUGIN_ROOT}/scripts/grasp\" hook", "timeout": 30 }]
+      }
+    ]
+  }
+}

@@ -59,6 +59,17 @@ Rejections go back to the agent.
 
 ## Quick start (Claude Code)
 
+Install the plugin from inside Claude Code. No Go needed: it downloads the right grasp binary on first use and checks its checksum.
+
+```
+/plugin marketplace add arsaljamal/grasp
+/plugin install grasp@grasp
+```
+
+Then work as usual. When you want to review, type `/grasp:review` and open the page it gives you.
+
+Or install the command yourself and set up one project:
+
 ```sh
 go install github.com/arsaljamal/grasp/cmd/grasp@latest
 cd your-project

@@ -1,0 +1,16 @@
+{
+  "name": "grasp",
+  "description": "grasp: review what your coding agent did, decision by decision.",
+  "owner": {
+    "name": "Arsal Jamal",
+    "url": "https://github.com/arsaljamal"
+  },
+  "plugins": [
+    {
+      "name": "grasp",
+      "source": "./plugin",
+      "description": "Review what your coding agent did, decision by decision.",
+      "category": "development"
+    }
+  ]
+}

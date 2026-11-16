@@ -39,7 +39,7 @@ Usage:
   grasp import [--latest | transcript.jsonl ...]
                              load Claude Code sessions (--latest: newest session for this folder)
   grasp feedback             print reviewer feedback as instructions for the agent
-  grasp mcp                  run the MCP server (started by the agent, not by you)
+  grasp mcp [-dir D]         run the MCP server (started by the agent, not by you)
   grasp hook                 Claude Code hook entry point (reads the hook event on stdin)
   grasp version
 
@@ -320,12 +320,19 @@ func runMCP(ctx context.Context, args []string) error {
 	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
 	base := fs.String("base", "", "commit examples compare against (default: HEAD when the agent starts)")
 	timeout := fs.Duration("timeout", 90*time.Second, "time limit for each example run")
+	dir := fs.String("dir", "", "project folder (default: $CLAUDE_PROJECT_DIR, else the current folder)")
 	_ = fs.Parse(args)
-	st, err := openHere()
+	wd, _ := os.Getwd()
+	if d := os.Getenv("CLAUDE_PROJECT_DIR"); d != "" {
+		wd = d // a plugin's server may not start in the project folder
+	}
+	if *dir != "" {
+		wd = *dir
+	}
+	st, err := store.Open(wd)
 	if err != nil {
 		return err
 	}
-	wd, _ := os.Getwd()
 	o := mcpserver.Options{Version: version, Dir: wd, Base: *base, Timeout: *timeout}
 	if o.Base == "" {
 		// The code as it is when the agent starts is the "before" for examples.
