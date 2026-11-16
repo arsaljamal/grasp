@@ -1,0 +1,35 @@
+{
+  "manifest_version": "0.3",
+  "name": "grasp",
+  "display_name": "grasp",
+  "version": "VERSION",
+  "description": "Review what your coding agent did, decision by decision.",
+  "long_description": "The agent records each decision (what, why, files, risk) and shows real before/after behavior: grasp runs a command on the old code and the new code. Reviewers approve or reject each decision on a local page (grasp serve), and rejections come back to the agent through get_review_feedback.",
+  "author": { "name": "Arsal Jamal", "url": "https://github.com/arsaljamal" },
+  "homepage": "https://github.com/arsaljamal/grasp",
+  "repository": { "type": "git", "url": "https://github.com/arsaljamal/grasp" },
+  "license": "MIT",
+  "keywords": ["code-review", "ai-agents", "developer-tools"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/grasp",
+    "mcp_config": {
+      "command": "${__dirname}/server/grasp",
+      "args": ["mcp", "-dir", "${user_config.project}"]
+    }
+  },
+  "user_config": {
+    "project": {
+      "type": "directory",
+      "title": "Project folder",
+      "description": "The git repository the agent works in. grasp keeps its notes in .grasp there.",
+      "required": true
+    }
+  },
+  "tools": [
+    { "name": "record_decision", "description": "Record a decision before making the changes that carry it out." },
+    { "name": "show_behavior", "description": "Run a command on the old and the new code and show reviewers both outputs." },
+    { "name": "get_review_feedback", "description": "Get reviewer verdicts and comments on earlier decisions." }
+  ],
+  "compatibility": { "platforms": ["darwin", "linux"] }
+}

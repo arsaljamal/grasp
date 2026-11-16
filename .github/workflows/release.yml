@@ -21,8 +21,13 @@ jobs:
             os=${t%/*}; arch=${t#*/}
             CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X main.version=$v" -o grasp ./cmd/grasp
             tar -czf dist/grasp_${v}_${os}_${arch}.tar.gz grasp LICENSE README.md
-            rm grasp
+            mkdir -p mcpb/server && mv grasp mcpb/server/grasp-$os-$arch
           done
+          # MCP bundle (for the MCP Registry and Claude Desktop): all binaries plus a picker
+          cp packaging/mcpb/grasp mcpb/server/grasp
+          sed "s/VERSION/$v/" packaging/mcpb/manifest.json > mcpb/manifest.json
+          cp LICENSE mcpb/
+          (cd mcpb && zip -qr ../dist/grasp-$v.mcpb .)
           (cd dist && sha256sum *.tar.gz > checksums.txt)
       - name: publish
         env:

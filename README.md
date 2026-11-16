@@ -2,11 +2,18 @@
 
 **Review what your coding agent did, decision by decision.**
 
-AI agents now write code faster than people can review it. A 2,000-line diff hides the things a reviewer
-actually needs to judge: *it added a cache here, it changed the refund rule, it pulled in a new library.*
-grasp shows you **what the software does now, compared with before**, using real outputs instead of the
-agent's description. Then it walks you through the agent's decisions one at a time, with two big buttons.
-Rejections go back to the agent.
+AI agents write code faster than people can review it. grasp shows you **what the software does now
+compared with before** (real outputs, not the agent's summary), walks you through each decision with
+**Approve / Reject**, warns you what the change could break, and sends rejections back to the agent.
+
+Install in Claude Code (no Go needed):
+
+```
+/plugin marketplace add arsaljamal/grasp
+/plugin install grasp@grasp
+```
+
+Work as usual, then type `/grasp:review`. For a pull request without an agent session, see [PR mode](#reviewing-a-pull-request-no-agent-session).
 
 ![A decision in grasp: before and after, run for real](docs/img/review.png)
 
@@ -59,14 +66,8 @@ Rejections go back to the agent.
 
 ## Quick start (Claude Code)
 
-Install the plugin from inside Claude Code. No Go needed: it downloads the right grasp binary on first use and checks its checksum.
-
-```
-/plugin marketplace add arsaljamal/grasp
-/plugin install grasp@grasp
-```
-
-Then work as usual. When you want to review, type `/grasp:review` and open the page it gives you.
+The plugin (above) downloads the right grasp binary on first use and checks its checksum. Then work as
+usual and type `/grasp:review` when you want to review.
 
 Or install the command yourself and set up one project:
 
