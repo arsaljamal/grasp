@@ -1,0 +1,16 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.arsaljamal/grasp",
+  "title": "grasp",
+  "description": "Review what your coding agent did, decision by decision, with real before/after behavior.",
+  "repository": { "url": "https://github.com/arsaljamal/grasp", "source": "github" },
+  "version": "0.1.1",
+  "packages": [
+    {
+      "registryType": "mcpb",
+      "identifier": "https://github.com/arsaljamal/grasp/releases/download/v0.1.1/grasp-0.1.1.mcpb",
+      "fileSha256": "5476df2c339c9659c900a775cd56b552c3146e6429d27d206f8d0cf2576ddc9e",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
