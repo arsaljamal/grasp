@@ -1,0 +1,27 @@
+package main
+
+import (
+	"bufio"
+	"net/http"
+)
+
+// importTitles adds one todo per line of a plain-text body (used by the
+// nightly sync from the planning tool). Invalid lines are skipped and
+// reported, so one bad line does not fail the whole import.
+func (s *store) importTitles(w http.ResponseWriter, r *http.Request) {
+	var added, skipped []string
+	sc := bufio.NewScanner(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	for sc.Scan() {
+		title, err := validateTitle(sc.Text())
+		if err != nil {
+			skipped = append(skipped, sc.Text())
+			continue
+		}
+		s.mu.Lock()
+		s.next++
+		s.todos = append(s.todos, Todo{ID: s.next, Title: title})
+		s.mu.Unlock()
+		added = append(added, title)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"added": len(added), "skipped": skipped})
+}

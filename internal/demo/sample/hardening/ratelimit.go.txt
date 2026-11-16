@@ -1,0 +1,105 @@
+package main
+
+import (
+	"math"
+	"net"
+	"net/http"
+	"strconv"
+	"sync"
+	"time"
+)
+
+// rateLimiter is a per-key token bucket. Each key may make up to burst
+// requests at once and then refills at rate tokens per second.
+type rateLimiter struct {
+	mu        sync.Mutex
+	rate      float64
+	burst     float64
+	idleTTL   time.Duration
+	now       func() time.Time
+	buckets   map[string]*bucket
+	lastSweep time.Time
+}
+
+type bucket struct {
+	tokens float64
+	last   time.Time
+}
+
+func newRateLimiter(rate float64, burst int, idleTTL time.Duration, now func() time.Time) *rateLimiter {
+	if now == nil {
+		now = time.Now
+	}
+	return &rateLimiter{
+		rate:      rate,
+		burst:     float64(burst),
+		idleTTL:   idleTTL,
+		now:       now,
+		buckets:   make(map[string]*bucket),
+		lastSweep: now(),
+	}
+}
+
+// allow consumes a token for key. If none is available it reports how long
+// until the next one will be.
+func (l *rateLimiter) allow(key string) (bool, time.Duration) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	now := l.now()
+	if now.Sub(l.lastSweep) >= l.idleTTL {
+		l.sweep(now)
+	}
+
+	b, ok := l.buckets[key]
+	if !ok {
+		b = &bucket{tokens: l.burst, last: now}
+		l.buckets[key] = b
+	} else {
+		elapsed := now.Sub(b.last).Seconds()
+		b.tokens = math.Min(l.burst, b.tokens+elapsed*l.rate)
+		b.last = now
+	}
+
+	if b.tokens >= 1 {
+		b.tokens--
+		return true, 0
+	}
+	wait := time.Duration((1 - b.tokens) / l.rate * float64(time.Second))
+	return false, wait
+}
+
+// sweep drops buckets idle long enough to have refilled completely, so
+// forgetting them changes nothing for the client.
+func (l *rateLimiter) sweep(now time.Time) {
+	for k, b := range l.buckets {
+		if now.Sub(b.last) >= l.idleTTL {
+			delete(l.buckets, k)
+		}
+	}
+	l.lastSweep = now
+}
+
+// middleware rejects requests over the limit with 429 and a Retry-After header.
+// Clients are keyed by the connection's remote IP; X-Forwarded-For is not
+// trusted because any client can set it.
+func (l *rateLimiter) middleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ok, wait := l.allow(clientIP(r))
+		if !ok {
+			secs := max(1, int(math.Ceil(wait.Seconds())))
+			w.Header().Set("Retry-After", strconv.Itoa(secs))
+			writeError(w, http.StatusTooManyRequests, "rate_limited", "too many requests, retry later")
+			return
+		}
+		next(w, r)
+	}
+}
+
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}

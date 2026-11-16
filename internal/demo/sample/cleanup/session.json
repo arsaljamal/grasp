@@ -1,0 +1,183 @@
+{
+ "id": "demo-cleanup",
+ "title": "Titles should have repeated spaces collapsed, e.g. 'buy    milk' becomes 'buy m…",
+ "agent": "claude-code",
+ "dir": "{{DIR}}",
+ "source": "",
+ "started": "2026-11-15T12:22:12.278Z",
+ "updated": "2026-11-15T12:23:03.134Z",
+ "events": [
+  {
+   "seq": 1,
+   "time": "2026-11-15T12:22:12.278Z",
+   "kind": "prompt",
+   "text": "Titles should have repeated spaces collapsed, e.g. 'buy    milk' becomes 'buy milk'. Make that change and update tests.",
+   "turn": 1
+  },
+  {
+   "seq": 2,
+   "time": "2026-11-15T12:22:15.09Z",
+   "kind": "tool",
+   "text": "{\"query\":\"select:mcp__grasp__get_review_feedback,mcp__grasp__record_decision,mcp__grasp__show_behavior\",\"max_results\":3}",
+   "tool": "ToolSearch",
+   "turn": 1
+  },
+  {
+   "seq": 3,
+   "time": "2026-11-15T12:22:16.058Z",
+   "kind": "command",
+   "text": "git ls-files && git show --stat HEAD",
+   "tool": "Bash",
+   "failed": true,
+   "turn": 1
+  },
+  {
+   "seq": 4,
+   "time": "2026-11-15T12:22:18.342Z",
+   "kind": "feedback",
+   "tool": "mcp__grasp__get_review_feedback",
+   "turn": 1
+  },
+  {
+   "seq": 5,
+   "time": "2026-11-15T12:22:18.845Z",
+   "kind": "command",
+   "text": "git ls-files",
+   "tool": "Bash",
+   "turn": 1
+  },
+  {
+   "seq": 6,
+   "time": "2026-11-15T12:22:21.465Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "main.go",
+   "turn": 1
+  },
+  {
+   "seq": 7,
+   "time": "2026-11-15T12:22:21.915Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "importer.go",
+   "turn": 1
+  },
+  {
+   "seq": 8,
+   "time": "2026-11-15T12:22:22.567Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "main_test.go",
+   "turn": 1
+  },
+  {
+   "seq": 9,
+   "time": "2026-11-15T12:22:30.154Z",
+   "kind": "decision",
+   "text": "Collapse whitespace runs in shared validateTitle",
+   "tool": "mcp__grasp__record_decision",
+   "decision_id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "turn": 1
+  },
+  {
+   "seq": 10,
+   "time": "2026-11-15T12:22:34.171Z",
+   "kind": "edit",
+   "tool": "Edit",
+   "file": "main.go",
+   "before": "// validateTitle trims a title and checks it is present and short enough.\n// It is shared by POST /todos and the bulk importer.\nfunc validateTitle(raw string) (string, error) {\n\ttitle := strings.TrimSpace(raw)",
+   "after": "// validateTitle trims a title, collapses runs of whitespace to a single\n// space, and checks it is present and short enough. It is shared by\n// POST /todos and the bulk importer.\nfunc validateTitle(raw string) (string, error) {\n\ttitle := strings.Join(strings.Fields(raw), \" \")",
+   "decision_id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "turn": 1
+  },
+  {
+   "seq": 11,
+   "time": "2026-11-15T12:22:36.431Z",
+   "kind": "say",
+   "text": "Collapse is in `validateTitle` now; next I'm adding tests.",
+   "turn": 1
+  },
+  {
+   "seq": 12,
+   "time": "2026-11-15T12:22:43.788Z",
+   "kind": "edit",
+   "tool": "Edit",
+   "file": "main_test.go",
+   "before": "func TestCreateTodoTitleAtLimit(t *testing.T) {",
+   "after": "func TestCreateTodoCollapsesRepeatedSpaces(t *testing.T) {\n\ttests := map[string]string{\n\t\t\"buy    milk\":          \"buy milk\",\n\t\t\"  buy   fresh  milk \": \"buy fresh milk\",\n\t\t`buy\\t\\tmilk`:          \"buy milk\",\n\t\t\"buy milk\":             \"buy milk\",\n\t}\n\tfor in, want := range tests {\n\t\th, _ := newTestServer()\n\t\trec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"`+in+`\"}`)\n\t\tif rec.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"title %q: status = %d, want 201; body %s\", in, rec.Code, rec.Body)\n\t\t}\n\t\tvar got Todo\n\t\tif err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {\n\t\t\tt.Fatal(err)\n\t\t}\n\t\tif got.Title != want {\n\t\t\tt.Errorf(\"title %q: got %q, want %q\", in, got.Title, want)\n\t\t}\n\t}\n}\n\nfunc TestCreateTodoLengthCountsCollapsedTitle(t *testing.T) {\n\th, _ := newTestServer()\n\t// Over the limit as sent, but exactly at it once the spaces collapse.\n\ttitle := strings.Repeat(\"a\", maxCreateTitleLen-2) + \"      \" + \"b\"\n\trec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"`+title+`\"}`)\n\tif rec.Code != http.StatusCreated {\n\t\tt.Fatalf(\"status = %d, want 201; body %s\", rec.Code, rec.Body)\n\t}\n}\n\nfunc TestImportCollapsesRepeatedSpaces(t *testing.T) {\n\th, _ := newTestServer()\n\treq := httptest.NewRequest(http.MethodPost, \"/todos/import\", strings.NewReader(\"buy    milk\\n\"))\n\th.ServeHTTP(httptest.NewRecorder(), req)\n\n\trec := httptest.NewRecorder()\n\th.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, \"/todos\", nil))\n\tvar got []Todo\n\tif err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {\n\t\tt.Fatal(err)\n\t}\n\tif len(got) != 1 || got[0].Title != \"buy milk\" {\n\t\tt.Errorf(\"got %+v, want one todo titled %q\", got, \"buy milk\")\n\t}\n}\n\nfunc TestCreateTodoTitleAtLimit(t *testing.T) {",
+   "decision_id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "turn": 1
+  },
+  {
+   "seq": 13,
+   "time": "2026-11-15T12:22:44.749Z",
+   "kind": "command",
+   "text": "go test ./... 2>&1 | tail -20",
+   "tool": "Bash",
+   "turn": 1
+  },
+  {
+   "seq": 14,
+   "time": "2026-11-15T12:22:53.111Z",
+   "kind": "behavior",
+   "text": "Repeated spaces in titles are collapsed",
+   "tool": "mcp__grasp__show_behavior",
+   "decision_id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "turn": 1
+  },
+  {
+   "seq": 15,
+   "time": "2026-11-15T12:23:03.134Z",
+   "kind": "say",
+   "text": "Titles now have repeated spaces collapsed, so `'buy    milk'` is stored as `'buy milk'`. Tests pass.\n\n**Change** (`main.go:94`): `validateTitle` used to only trim the ends. It now trims and then turns every run of whitespace inside the title into a single space.\n\n**Three things you might not expect:**\n- **The bulk importer changes too.** `validateTitle` is shared by `POST /todos` and `/todos/import`, so imported titles get collapsed as well.\n- **Tabs and other whitespace collapse, not just spaces.** `\"a  b\\t\\tc\"` becomes `\"a b c\"`.\n- **Length limits count the collapsed title.** An 85-character title that is 80 after collapsing used to get a 400 and is now accepted with a 201.\n\nIf you want any of these narrower (only `POST /todos`, or only plain spaces), it's a small change.\n\n**Tests added** (`main_test.go`):\n- `TestCreateTodoCollapsesRepeatedSpaces`: covers several spaces, leading and trailing spaces, tabs, and an already-clean title.\n- `TestCreateTodoLengthCountsCollapsedTitle`: checks the length-limit case above.\n- `TestImportCollapsesRepeatedSpaces`: checks that an imported title is stored collapsed.\n\nI recorded the decision in grasp and added a before/after run against the live server for reviewers. Before the change, titles were stored exactly as sent and the 85-character title was rejected; now it's accepted and all titles come back collapsed.\n\nSeparately, the linter flags `importer.go:13`: the importer never checks `sc.Err()` after reading, so if reading fails partway (for example, a body over 1 MB), it returns 200 with a partial count. That was already there before my change and I left it alone.\n\nNothing is committed.",
+   "turn": 1
+  }
+ ],
+ "decisions": [
+  {
+   "id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "seq": 9,
+   "turn": 1,
+   "title": "Collapse whitespace runs in shared validateTitle",
+   "kind": "business-rule",
+   "why": "Collapsing in validateTitle means POST /todos and the bulk importer both store normalized titles. It happens before the length checks, so limits count the collapsed title.",
+   "alternatives": [
+    "Collapse only in validateCreateTitle (POST /todos only), leaving imported titles un-normalized",
+    "Collapse only runs of the ASCII space character, leaving tabs and other whitespace as they are"
+   ],
+   "risk": "strings.Fields treats any Unicode whitespace run (tabs, NBSP) as a separator, so a tab inside a title becomes a single space. A title that used to go over the length limit only because of extra spaces is now accepted.",
+   "files": [
+    "main.go",
+    "main_test.go"
+   ],
+   "edits": [
+    10,
+    12
+   ]
+  }
+ ],
+ "behaviors": [
+  {
+   "id": "toolu_01XTDjebeKfeRF51dNsWKYEP",
+   "seq": 14,
+   "title": "Repeated spaces in titles are collapsed",
+   "command": "go build -o /tmp/todoapi_demo . && (/tmp/todoapi_demo & echo $! > /tmp/todoapi_demo.pid); sleep 1; \nr=$(curl -s -w ' %{http_code}' -H 'Content-Type: application/json' -d '{\"title\":\"buy    milk\"}' localhost:8080/todos); echo \"POST 'buy    milk' -> $r\";\nr=$(curl -s -w ' %{http_code}' -H 'Content-Type: application/json' -d '{\"title\":\"  a  b\\t\\tc  \"}' localhost:8080/todos); echo \"POST '  a  b<tab><tab>c  ' -> $r\";\nt=$(printf 'a%.0s' $(seq 1 78))\"      b\"; r=$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' -d \"{\\\"title\\\":\\\"$t\\\"}\" localhost:8080/todos); echo \"POST 85 chars, 80 after collapse -> $r\";\ncurl -s -o /dev/null --data-binary $'walk   the   dog\\n' localhost:8080/todos/import; echo \"import 'walk   the   dog' -> stored as: $(curl -s localhost:8080/todos | grep -o '\"title\":\"walk[^\"]*\"')\";\nkill $(cat /tmp/todoapi_demo.pid)",
+   "expect": "POST and import both store 'buy milk'; the 81-char padded title is accepted with 201",
+   "decision": "Collapse whitespace runs in shared validateTitle",
+   "decision_id": "toolu_01Rm99YL5hAH3DbbHjNcyNv9",
+   "base": "55de78c932f6bfb1692a02406cf978330ff16b6f",
+   "before": {
+    "output": "POST 'buy    milk' -> {\"id\":1,\"title\":\"buy    milk\",\"done\":false}\n 201\nPOST '  a  b<tab><tab>c  ' -> {\"id\":2,\"title\":\"a  b\t\tc\",\"done\":false}\n 201\nPOST 85 chars, 80 after collapse -> 400\nimport 'walk   the   dog' -> stored as: \"title\":\"walk   the   dog\"",
+    "exit": 0,
+    "millis": 1440
+   },
+   "after": {
+    "output": "POST 'buy    milk' -> {\"id\":1,\"title\":\"buy milk\",\"done\":false}\n 201\nPOST '  a  b<tab><tab>c  ' -> {\"id\":2,\"title\":\"a b c\",\"done\":false}\n 201\nPOST 85 chars, 80 after collapse -> 201\nimport 'walk   the   dog' -> stored as: \"title\":\"walk the dog\"",
+    "exit": 0,
+    "millis": 1465
+   },
+   "changed": true
+  }
+ ],
+ "unexplained": null
+}

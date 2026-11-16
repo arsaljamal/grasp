@@ -2,7 +2,7 @@
   "name": "grasp",
   "displayName": "grasp",
   "description": "Review what your coding agent did, decision by decision: real before/after behavior, what it could break, and Approve/Reject that goes back to the agent.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": { "name": "Arsal Jamal", "url": "https://github.com/arsaljamal" },
   "homepage": "https://github.com/arsaljamal/grasp",
   "repository": "https://github.com/arsaljamal/grasp",

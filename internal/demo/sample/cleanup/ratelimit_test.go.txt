@@ -1,0 +1,64 @@
+package main
+
+import (
+	"net/http/httptest"
+	"testing"
+	"time"
+)
+
+func TestRateLimiterBurstCappedAfterIdle(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(0, 0)}
+	l := newRateLimiter(5, 3, time.Hour, clk.now)
+	for range 3 {
+		l.allow("a")
+	}
+	clk.advance(10 * time.Minute)
+	for i := range 3 {
+		if ok, _ := l.allow("a"); !ok {
+			t.Fatalf("request %d after idle denied", i+1)
+		}
+	}
+	if ok, wait := l.allow("a"); ok || wait != 200*time.Millisecond {
+		t.Errorf("allow = %v, %v; want false, 200ms (tokens must not exceed burst)", ok, wait)
+	}
+}
+
+func TestRateLimiterEvictsIdleBuckets(t *testing.T) {
+	clk := &fakeClock{t: time.Unix(0, 0)}
+	l := newRateLimiter(5, 10, time.Minute, clk.now)
+	l.allow("a")
+	l.allow("b")
+	clk.advance(30 * time.Second)
+	l.allow("b")
+	clk.advance(31 * time.Second)
+	l.allow("c") // triggers a sweep: a is idle 61s, b only 31s
+
+	if _, ok := l.buckets["a"]; ok {
+		t.Error("idle bucket a was not evicted")
+	}
+	if _, ok := l.buckets["b"]; !ok {
+		t.Error("recently used bucket b was evicted")
+	}
+	if len(l.buckets) != 2 {
+		t.Errorf("len(buckets) = %d, want 2", len(l.buckets))
+	}
+}
+
+func TestClientIP(t *testing.T) {
+	tests := []struct{ remote, xff, want string }{
+		{"192.0.2.1:5555", "", "192.0.2.1"},
+		{"[2001:db8::1]:5555", "", "2001:db8::1"},
+		{"192.0.2.1:5555", "203.0.113.9", "192.0.2.1"}, // spoofable header ignored
+		{"no-port", "", "no-port"},
+	}
+	for _, tc := range tests {
+		r := httptest.NewRequest("POST", "/todos", nil)
+		r.RemoteAddr = tc.remote
+		if tc.xff != "" {
+			r.Header.Set("X-Forwarded-For", tc.xff)
+		}
+		if got := clientIP(r); got != tc.want {
+			t.Errorf("clientIP(%q) = %q, want %q", tc.remote, got, tc.want)
+		}
+	}
+}

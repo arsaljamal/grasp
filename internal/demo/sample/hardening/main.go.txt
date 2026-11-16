@@ -1,0 +1,141 @@
+package main
+
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
+	"mime"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+	"unicode/utf8"
+)
+
+const (
+	maxTitleLen  = 200
+	maxBodyBytes = 1 << 20
+)
+
+type Todo struct {
+	ID    int    `json:"id"`
+	Title string `json:"title"`
+	Done  bool   `json:"done"`
+}
+
+// createTodoRequest is the accepted POST /todos body. It is separate from
+// Todo so that clients cannot set id.
+type createTodoRequest struct {
+	Title string `json:"title"`
+	Done  bool   `json:"done"`
+}
+
+type store struct {
+	mu    sync.Mutex
+	next  int
+	todos []Todo
+}
+
+type apiError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func writeError(w http.ResponseWriter, status int, code, msg string) {
+	writeJSON(w, status, map[string]apiError{"error": {Code: code, Message: msg}})
+}
+
+func (s *store) list(w http.ResponseWriter, r *http.Request) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	json.NewEncoder(w).Encode(s.todos)
+}
+
+func (s *store) create(w http.ResponseWriter, r *http.Request) {
+	mt, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mt != "application/json" {
+		writeError(w, http.StatusUnsupportedMediaType, "unsupported_media_type", "Content-Type must be application/json")
+		return
+	}
+
+	req, status, code, msg := decodeCreate(w, r)
+	if status != 0 {
+		writeError(w, status, code, msg)
+		return
+	}
+
+	title := strings.TrimSpace(req.Title)
+	switch {
+	case title == "":
+		writeError(w, http.StatusBadRequest, "validation_failed", "title is required")
+		return
+	case utf8.RuneCountInString(title) > maxTitleLen:
+		writeError(w, http.StatusBadRequest, "validation_failed", fmt.Sprintf("title must be at most %d characters", maxTitleLen))
+		return
+	}
+
+	t := Todo{Title: title, Done: req.Done}
+	s.mu.Lock()
+	s.next++
+	t.ID = s.next
+	s.todos = append(s.todos, t)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusCreated, t)
+}
+
+// decodeCreate reads exactly one JSON object with only known fields. On
+// failure it returns a non-zero status with an error code and message.
+func decodeCreate(w http.ResponseWriter, r *http.Request) (req createTodoRequest, status int, code, msg string) {
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))
+	dec.DisallowUnknownFields()
+
+	err := dec.Decode(&req)
+	if err == nil {
+		if dec.Decode(&struct{}{}) != io.EOF {
+			return req, http.StatusBadRequest, "invalid_json", "body must contain a single JSON object"
+		}
+		return req, 0, "", ""
+	}
+
+	var syntaxErr *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	var maxErr *http.MaxBytesError
+	switch {
+	case errors.As(err, &maxErr):
+		return req, http.StatusRequestEntityTooLarge, "body_too_large", fmt.Sprintf("body must be at most %d bytes", maxBodyBytes)
+	case errors.Is(err, io.EOF):
+		return req, http.StatusBadRequest, "invalid_json", "body must not be empty"
+	case errors.As(err, &syntaxErr), errors.Is(err, io.ErrUnexpectedEOF):
+		return req, http.StatusBadRequest, "invalid_json", "body is not valid JSON"
+	case errors.As(err, &typeErr):
+		if typeErr.Field == "" {
+			return req, http.StatusBadRequest, "invalid_json", "body must be a JSON object"
+		}
+		return req, http.StatusBadRequest, "validation_failed", fmt.Sprintf("field %q must be a %s", typeErr.Field, typeErr.Type)
+	case strings.HasPrefix(err.Error(), "json: unknown field "):
+		field := strings.TrimPrefix(err.Error(), "json: unknown field ")
+		return req, http.StatusBadRequest, "unknown_field", "unknown field " + field
+	default:
+		return req, http.StatusBadRequest, "invalid_json", "body is not valid JSON"
+	}
+}
+
+func newServer(s *store, limiter *rateLimiter) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /todos", s.list)
+	mux.HandleFunc("POST /todos", limiter.middleware(s.create))
+	return mux
+}
+
+func main() {
+	limiter := newRateLimiter(5, 10, 5*time.Minute, nil)
+	log.Fatal(http.ListenAndServe(":8080", newServer(&store{}, limiter)))
+}

@@ -13,7 +13,8 @@ Install in Claude Code (no Go needed):
 /plugin install grasp@grasp
 ```
 
-Work as usual, then type `/grasp:review`. For a pull request without an agent session, see [PR mode](#reviewing-a-pull-request-no-agent-session).
+Work as usual, then type `/grasp:review`. To see it first on a sample session, type `/grasp:demo`, or without
+Claude Code: `go run github.com/arsaljamal/grasp/cmd/grasp@latest demo`. For a pull request without an agent session, see [PR mode](#reviewing-a-pull-request-no-agent-session).
 
 ![A decision in grasp: before and after, run for real](docs/img/review.png)
 
@@ -101,6 +102,7 @@ are grouped with the code they test.
 
 | Command | What it does |
 |---|---|
+| `grasp demo` | Open the review page on two sample Claude Code sessions. Nothing to set up, nothing is kept. |
 | `grasp init` | Set up Claude Code in this project. Merges into existing config files, never overwrites them. |
 | `grasp serve [-addr]` | The review page, on 127.0.0.1:7080 by default. |
 | `grasp pr` | Load a branch or pull request from git; `-explain` adds Claude's decisions and examples. |

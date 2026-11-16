@@ -9,10 +9,12 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -20,6 +22,7 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/arsaljamal/grasp/internal/behavior"
+	"github.com/arsaljamal/grasp/internal/demo"
 	"github.com/arsaljamal/grasp/internal/mcpserver"
 	"github.com/arsaljamal/grasp/internal/session"
 	"github.com/arsaljamal/grasp/internal/store"
@@ -41,6 +44,7 @@ Usage:
   grasp feedback             print reviewer feedback as instructions for the agent
   grasp mcp [-dir D]         run the MCP server (started by the agent, not by you)
   grasp hook                 Claude Code hook entry point (reads the hook event on stdin)
+  grasp demo                 try the review page on a sample session (no agent needed)
   grasp version
 
 All commands work on the current folder; state lives in ./.grasp.
@@ -60,6 +64,8 @@ func main() {
 		err = runInit()
 	case "serve":
 		err = runServe(ctx, args)
+	case "demo":
+		err = runDemo(ctx, args)
 	case "import":
 		err = runImport(args)
 	case "pr":
@@ -102,6 +108,43 @@ func runServe(ctx context.Context, args []string) error {
 	}
 	fmt.Printf("grasp: review page on http://%s (Ctrl+C to stop)\n", *addr)
 	return web.New(st).ListenAndServe(ctx, *addr)
+}
+
+// runDemo serves a sample project and session from a temporary folder.
+func runDemo(ctx context.Context, args []string) error {
+	fs := flag.NewFlagSet("demo", flag.ExitOnError)
+	addr := fs.String("addr", "127.0.0.1:7080", "listen address (another free port is used if it is taken)")
+	noOpen := fs.Bool("no-open", false, "don't open the browser")
+	_ = fs.Parse(args)
+	dir, err := demo.Setup()
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(dir)
+	st, err := store.Open(dir)
+	if err != nil {
+		return err
+	}
+	if ln, err := net.Listen("tcp", *addr); err == nil {
+		ln.Close()
+	} else if ln, err := net.Listen("tcp", "127.0.0.1:0"); err == nil {
+		*addr = ln.Addr().String()
+		ln.Close()
+	}
+	url := "http://" + *addr
+	fmt.Printf("grasp demo: two real Claude Code sessions on a small Go API.\nReview it at %s (Ctrl+C to stop; nothing is kept).\n", url)
+	if !*noOpen {
+		go func() { time.Sleep(300 * time.Millisecond); openBrowser(url) }()
+	}
+	return web.New(st).ListenAndServe(ctx, *addr)
+}
+
+func openBrowser(url string) {
+	cmd := "xdg-open"
+	if runtime.GOOS == "darwin" {
+		cmd = "open"
+	}
+	_ = exec.Command(cmd, url).Start()
 }
 
 func runImport(args []string) error {

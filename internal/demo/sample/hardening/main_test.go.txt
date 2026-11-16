@@ -1,0 +1,172 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+type fakeClock struct{ t time.Time }
+
+func (c *fakeClock) now() time.Time          { return c.t }
+func (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }
+
+func newTestServer() (http.Handler, *fakeClock) {
+	clk := &fakeClock{t: time.Unix(0, 0)}
+	return newServer(&store{}, newRateLimiter(5, 10, 5*time.Minute, clk.now)), clk
+}
+
+func postTodo(h http.Handler, ip, contentType, body string) *httptest.ResponseRecorder {
+	req := httptest.NewRequest(http.MethodPost, "/todos", strings.NewReader(body))
+	req.RemoteAddr = ip + ":1234"
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	return rec
+}
+
+func decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiError {
+	t.Helper()
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Fatalf("Content-Type = %q, want application/json", ct)
+	}
+	var body struct {
+		Error apiError `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("error body is not JSON: %v (%q)", err, rec.Body.String())
+	}
+	if body.Error.Code == "" || body.Error.Message == "" {
+		t.Fatalf("error body missing code/message: %q", rec.Body.String())
+	}
+	return body.Error
+}
+
+func TestCreateTodoSuccess(t *testing.T) {
+	h, _ := newTestServer()
+	rec := postTodo(h, "10.0.0.1", "application/json; charset=utf-8", `{"title":"  buy milk  ","done":true}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body %s", rec.Code, rec.Body)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q", ct)
+	}
+	var got Todo
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatal(err)
+	}
+	want := Todo{ID: 1, Title: "buy milk", Done: true}
+	if got != want {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+}
+
+func TestCreateTodoTitleAtLimit(t *testing.T) {
+	h, _ := newTestServer()
+	// 200 multi-byte runes is valid: the limit is in characters, not bytes.
+	title := strings.Repeat("é", maxTitleLen)
+	rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"`+title+`"}`)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201; body %s", rec.Code, rec.Body)
+	}
+}
+
+func TestCreateTodoRejectsBadInput(t *testing.T) {
+	tests := []struct {
+		name        string
+		contentType string
+		body        string
+		status      int
+		code        string
+	}{
+		{"missing title", "application/json", `{"done":true}`, 400, "validation_failed"},
+		{"empty title", "application/json", `{"title":""}`, 400, "validation_failed"},
+		{"blank title", "application/json", `{"title":"   "}`, 400, "validation_failed"},
+		{"null title", "application/json", `{"title":null}`, 400, "validation_failed"},
+		{"title too long", "application/json", `{"title":"` + strings.Repeat("a", maxTitleLen+1) + `"}`, 400, "validation_failed"},
+		{"title wrong type", "application/json", `{"title":123}`, 400, "validation_failed"},
+		{"done wrong type", "application/json", `{"title":"x","done":"yes"}`, 400, "validation_failed"},
+		{"unknown field", "application/json", `{"title":"x","priority":1}`, 400, "unknown_field"},
+		{"client-supplied id", "application/json", `{"id":99,"title":"x"}`, 400, "unknown_field"},
+		{"empty body", "application/json", ``, 400, "invalid_json"},
+		{"malformed json", "application/json", `{"title":`, 400, "invalid_json"},
+		{"syntax error", "application/json", `{"title" "x"}`, 400, "invalid_json"},
+		{"array body", "application/json", `[{"title":"x"}]`, 400, "invalid_json"},
+		{"trailing data", "application/json", `{"title":"x"}{"title":"y"}`, 400, "invalid_json"},
+		{"body too large", "application/json", `{"title":"` + strings.Repeat("a", maxBodyBytes) + `"}`, 413, "body_too_large"},
+		{"missing content type", "", `{"title":"x"}`, 415, "unsupported_media_type"},
+		{"wrong content type", "text/plain", `{"title":"x"}`, 415, "unsupported_media_type"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			h, _ := newTestServer()
+			rec := postTodo(h, "10.0.0.1", tc.contentType, tc.body)
+			if rec.Code != tc.status {
+				t.Fatalf("status = %d, want %d; body %s", rec.Code, tc.status, rec.Body)
+			}
+			if e := decodeError(t, rec); e.Code != tc.code {
+				t.Errorf("code = %q, want %q (message %q)", e.Code, tc.code, e.Message)
+			}
+		})
+	}
+}
+
+func TestRejectedTodoIsNotStored(t *testing.T) {
+	h, _ := newTestServer()
+	postTodo(h, "10.0.0.1", "application/json", `{"title":""}`)
+	rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"ok"}`)
+	var got Todo
+	json.Unmarshal(rec.Body.Bytes(), &got)
+	if got.ID != 1 {
+		t.Errorf("ID = %d, want 1 (rejected request must not consume an ID)", got.ID)
+	}
+}
+
+func TestCreateTodoRateLimited(t *testing.T) {
+	h, clk := newTestServer()
+	for i := range 10 {
+		if rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"x"}`); rec.Code != http.StatusCreated {
+			t.Fatalf("request %d: status = %d, want 201", i+1, rec.Code)
+		}
+	}
+
+	rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"x"}`)
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("status = %d, want 429", rec.Code)
+	}
+	if ra := rec.Header().Get("Retry-After"); ra != "1" {
+		t.Errorf("Retry-After = %q, want 1", ra)
+	}
+	if e := decodeError(t, rec); e.Code != "rate_limited" {
+		t.Errorf("code = %q, want rate_limited", e.Code)
+	}
+
+	// Another client is unaffected.
+	if rec := postTodo(h, "10.0.0.2", "application/json", `{"title":"x"}`); rec.Code != http.StatusCreated {
+		t.Errorf("other client: status = %d, want 201", rec.Code)
+	}
+
+	// At 5 tokens/s, one token is back after 200ms.
+	clk.advance(200 * time.Millisecond)
+	if rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"x"}`); rec.Code != http.StatusCreated {
+		t.Errorf("after refill: status = %d, want 201", rec.Code)
+	}
+	if rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"x"}`); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("after one refill token: status = %d, want 429", rec.Code)
+	}
+}
+
+func TestInvalidRequestsCountTowardRateLimit(t *testing.T) {
+	h, _ := newTestServer()
+	for range 10 {
+		postTodo(h, "10.0.0.1", "application/json", `garbage`)
+	}
+	if rec := postTodo(h, "10.0.0.1", "application/json", `{"title":"x"}`); rec.Code != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want 429", rec.Code)
+	}
+}

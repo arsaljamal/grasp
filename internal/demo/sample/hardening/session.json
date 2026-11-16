@@ -1,0 +1,379 @@
+{
+ "id": "demo-hardening",
+ "title": "Make POST /todos production-ready: validate input (title required, max 200 char…",
+ "agent": "claude-code",
+ "dir": "{{DIR}}",
+ "source": "",
+ "started": "2026-11-15T12:05:14.209Z",
+ "updated": "2026-11-15T12:07:33.934Z",
+ "events": [
+  {
+   "seq": 1,
+   "time": "2026-11-15T12:05:14.209Z",
+   "kind": "prompt",
+   "text": "Make POST /todos production-ready: validate input (title required, max 200 chars, reject unknown fields), return proper JSON errors, add per-client rate limiting, and add tests. Keep it in the standard library.",
+   "turn": 1
+  },
+  {
+   "seq": 2,
+   "time": "2026-11-15T12:05:17.351Z",
+   "kind": "tool",
+   "text": "{\"query\":\"select:mcp__grasp__get_review_feedback,mcp__grasp__record_decision,mcp__grasp__show_behavior\",\"max_results\":3}",
+   "tool": "ToolSearch",
+   "turn": 1
+  },
+  {
+   "seq": 3,
+   "time": "2026-11-15T12:05:18.458Z",
+   "kind": "command",
+   "text": "git ls-files && cat .mcp.json && ls -la .claude",
+   "tool": "Bash",
+   "failed": true,
+   "turn": 1
+  },
+  {
+   "seq": 4,
+   "time": "2026-11-15T12:05:20.591Z",
+   "kind": "feedback",
+   "tool": "mcp__grasp__get_review_feedback",
+   "turn": 1
+  },
+  {
+   "seq": 5,
+   "time": "2026-11-15T12:05:21.028Z",
+   "kind": "command",
+   "text": "git -C {{DIR}} ls-files",
+   "tool": "Bash",
+   "failed": true,
+   "turn": 1
+  },
+  {
+   "seq": 6,
+   "time": "2026-11-15T12:05:24.115Z",
+   "kind": "command",
+   "text": "ls -la {{DIR}}",
+   "tool": "Bash",
+   "failed": true,
+   "turn": 1
+  },
+  {
+   "seq": 7,
+   "time": "2026-11-15T12:05:27.006Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "go.mod",
+   "turn": 1
+  },
+  {
+   "seq": 8,
+   "time": "2026-11-15T12:05:27.591Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "main.go",
+   "turn": 1
+  },
+  {
+   "seq": 9,
+   "time": "2026-11-15T12:05:29.886Z",
+   "kind": "read",
+   "tool": "Read",
+   "file": "main_test.go",
+   "failed": true,
+   "turn": 1
+  },
+  {
+   "seq": 10,
+   "time": "2026-11-15T12:05:38.105Z",
+   "kind": "say",
+   "text": "Reading the code is done (small Go stdlib server, `main.go` only). Next I'll log my design decisions in grasp, then write the code and tests.",
+   "turn": 1
+  },
+  {
+   "seq": 11,
+   "time": "2026-11-15T12:05:42.1Z",
+   "kind": "decision",
+   "text": "Strict validation of POST /todos body",
+   "tool": "mcp__grasp__record_decision",
+   "decision_id": "toolu_01LY8FKy8391fmTQiDvrofQZ",
+   "turn": 1
+  },
+  {
+   "seq": 12,
+   "time": "2026-11-15T12:05:44.402Z",
+   "kind": "decision",
+   "text": "Uniform JSON error envelope",
+   "tool": "mcp__grasp__record_decision",
+   "decision_id": "toolu_01TLwWuP5WRkfpSF6Cfvny46",
+   "turn": 1
+  },
+  {
+   "seq": 13,
+   "time": "2026-11-15T12:05:48.452Z",
+   "kind": "decision",
+   "text": "Per-IP token bucket on POST /todos",
+   "tool": "mcp__grasp__record_decision",
+   "decision_id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "turn": 1
+  },
+  {
+   "seq": 14,
+   "time": "2026-11-15T12:05:50.92Z",
+   "kind": "decision",
+   "text": "Handler tests with httptest and fake clock",
+   "tool": "mcp__grasp__record_decision",
+   "decision_id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "turn": 1
+  },
+  {
+   "seq": 15,
+   "time": "2026-11-15T12:06:05.315Z",
+   "kind": "edit",
+   "tool": "Write",
+   "file": "ratelimit.go",
+   "after": "package main\n\nimport (\n\t\"math\"\n\t\"net\"\n\t\"net/http\"\n\t\"strconv\"\n\t\"sync\"\n\t\"time\"\n)\n\n// rateLimiter is a per-key token bucket. Each key may make up to burst\n// requests at once and then refills at rate tokens per second.\ntype rateLimiter struct {\n\tmu        sync.Mutex\n\trate      float64\n\tburst     float64\n\tidleTTL   time.Duration\n\tnow       func() time.Time\n\tbuckets   map[string]*bucket\n\tlastSweep time.Time\n}\n\ntype bucket struct {\n\ttokens float64\n\tlast   time.Time\n}\n\nfunc newRateLimiter(rate float64, burst int, idleTTL time.Duration, now func() time.Time) *rateLimiter {\n\tif now == nil {\n\t\tnow = time.Now\n\t}\n\treturn &rateLimiter{\n\t\trate:      rate,\n\t\tburst:     float64(burst),\n\t\tidleTTL:   idleTTL,\n\t\tnow:       now,\n\t\tbuckets:   make(map[string]*bucket),\n\t\tlastSweep: now(),\n\t}\n}\n\n// allow consumes a token for key. If none is available it reports how long\n// until the next one will be.\nfunc (l *rateLimiter) allow(key string) (bool, time.Duration) {\n\tl.mu.Lock()\n\tdefer l.mu.Unlock()\n\n\tnow := l.now()\n\tif now.Sub(l.lastSweep) >= l.idleTTL {\n\t\tl.sweep(now)\n\t}\n\n\tb, ok := l.buckets[key]\n\tif !ok {\n\t\tb = &bucket{tokens: l.burst, last: now}\n\t\tl.buckets[key] = b\n\t} else {\n\t\telapsed := now.Sub(b.last).Seconds()\n\t\tb.tokens = math.Min(l.burst, b.tokens+elapsed*l.rate)\n\t\tb.last = now\n\t}\n\n\tif b.tokens >= 1 {\n\t\tb.tokens--\n\t\treturn true, 0\n\t}\n\twait := time.Duration((1 - b.tokens) / l.rate * float64(time.Second))\n\treturn false, wait\n}\n\n// sweep drops buckets idle long enough to have refilled completely, so\n// forgetting them changes nothing for the client.\nfunc (l *rateLimiter) sweep(now time.Time) {\n\tfor k, b := range l.buckets {\n\t\tif now.Sub(b.last) >= l.idleTTL {\n\t\t\tdelete(l.buckets, k)\n\t\t}\n\t}\n\tl.lastSweep = now\n}\n\n// middleware rejects requests over the limit with 429 and a Retry-After header.\n// Clients are keyed by the connection's remote IP; X-Forwarded-For is not\n// trusted because any client can set it.\nfunc (l *rateLimiter) middleware(next http.HandlerFunc) http.HandlerFunc {\n\treturn func(w http.ResponseWriter, r *http.Request) {\n\t\tok, wait := l.allow(clientIP(r))\n\t\tif !ok {\n\t\t\tsecs := int(math.Ceil(wait.Seconds()))\n\t\t\tif secs < 1 {\n\t\t\t\tsecs = 1\n\t\t\t}\n\t\t\tw.Header().Set(\"Retry-After\", strconv.Itoa(secs))\n\t\t\twriteError(w, http.StatusTooManyRequests, \"rate_limited\", \"too many requests, retry later\")\n\t\t\treturn\n\t\t}\n\t\tnext(w, r)\n\t}\n}\n\nfunc clientIP(r *http.Request) string {\n\thost, _, err := net.SplitHostPort(r.RemoteAddr)\n\tif err != nil {\n\t\treturn r.RemoteAddr\n\t}\n\treturn host\n}\n",
+   "new_file": true,
+   "decision_id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "turn": 1
+  },
+  {
+   "seq": 16,
+   "time": "2026-11-15T12:06:21.362Z",
+   "kind": "edit",
+   "tool": "Write",
+   "file": "main.go",
+   "before": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"log\"\n\t\"net/http\"\n\t\"sync\"\n)\n\ntype Todo struct {\n\tID    int    `json:\"id\"`\n\tTitle string `json:\"title\"`\n\tDone  bool   `json:\"done\"`\n}\n\ntype store struct {\n\tmu    sync.Mutex\n\tnext  int\n\ttodos []Todo\n}\n\nfunc (s *store) list(w http.ResponseWriter, r *http.Request) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tjson.NewEncoder(w).Encode(s.todos)\n}\n\nfunc (s *store) create(w http.ResponseWriter, r *http.Request) {\n\tvar t Todo\n\tjson.NewDecoder(r.Body).Decode(&t)\n\ts.mu.Lock()\n\ts.next++\n\tt.ID = s.next\n\ts.todos = append(s.todos, t)\n\ts.mu.Unlock()\n\tw.WriteHeader(http.StatusCreated)\n\tjson.NewEncoder(w).Encode(t)\n}\n\nfunc main() {\n\ts := &store{}\n\thttp.HandleFunc(\"GET /todos\", s.list)\n\thttp.HandleFunc(\"POST /todos\", s.create)\n\tlog.Fatal(http.ListenAndServe(\":8080\", nil))\n}\n",
+   "after": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"errors\"\n\t\"fmt\"\n\t\"io\"\n\t\"log\"\n\t\"mime\"\n\t\"net/http\"\n\t\"strings\"\n\t\"sync\"\n\t\"time\"\n\t\"unicode/utf8\"\n)\n\nconst (\n\tmaxTitleLen  = 200\n\tmaxBodyBytes = 1 << 20\n)\n\ntype Todo struct {\n\tID    int    `json:\"id\"`\n\tTitle string `json:\"title\"`\n\tDone  bool   `json:\"done\"`\n}\n\n// createTodoRequest is the accepted POST /todos body. It is separate from\n// Todo so that clients cannot set id.\ntype createTodoRequest struct {\n\tTitle string `json:\"title\"`\n\tDone  bool   `json:\"done\"`\n}\n\ntype store struct {\n\tmu    sync.Mutex\n\tnext  int\n\ttodos []Todo\n}\n\ntype apiError struct {\n\tCode    string `json:\"code\"`\n\tMessage string `json:\"message\"`\n}\n\nfunc writeJSON(w http.ResponseWriter, status int, v any) {\n\tw.Header().Set(\"Content-Type\", \"application/json\")\n\tw.WriteHeader(status)\n\tjson.NewEncoder(w).Encode(v)\n}\n\nfunc writeError(w http.ResponseWriter, status int, code, msg string) {\n\twriteJSON(w, status, map[string]apiError{\"error\": {Code: code, Message: msg}})\n}\n\nfunc (s *store) list(w http.ResponseWriter, r *http.Request) {\n\ts.mu.Lock()\n\tdefer s.mu.Unlock()\n\tjson.NewEncoder(w).Encode(s.todos)\n}\n\nfunc (s *store) create(w http.ResponseWriter, r *http.Request) {\n\tmt, _, err := mime.ParseMediaType(r.Header.Get(\"Content-Type\"))\n\tif err != nil || mt != \"application/json\" {\n\t\twriteError(w, http.StatusUnsupportedMediaType, \"unsupported_media_type\", \"Content-Type must be application/json\")\n\t\treturn\n\t}\n\n\treq, status, code, msg := decodeCreate(w, r)\n\tif status != 0 {\n\t\twriteError(w, status, code, msg)\n\t\treturn\n\t}\n\n\ttitle := strings.TrimSpace(req.Title)\n\tswitch {\n\tcase title == \"\":\n\t\twriteError(w, http.StatusBadRequest, \"validation_failed\", \"title is required\")\n\t\treturn\n\tcase !utf8.ValidString(title):\n\t\twriteError(w, http.StatusBadRequest, \"validation_failed\", \"title must be valid UTF-8\")\n\t\treturn\n\tcase utf8.RuneCountInString(title) > maxTitleLen:\n\t\twriteError(w, http.StatusBadRequest, \"validation_failed\", fmt.Sprintf(\"title must be at most %d characters\", maxTitleLen))\n\t\treturn\n\t}\n\n\tt := Todo{Title: title, Done: req.Done}\n\ts.mu.Lock()\n\ts.next++\n\tt.ID = s.next\n\ts.todos = append(s.todos, t)\n\ts.mu.Unlock()\n\twriteJSON(w, http.StatusCreated, t)\n}\n\n// decodeCreate reads exactly one JSON object with only known fields. On\n// failure it returns a non-zero status with an error code and message.\nfunc decodeCreate(w http.ResponseWriter, r *http.Request) (req createTodoRequest, status int, code, msg string) {\n\tdec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBodyBytes))\n\tdec.DisallowUnknownFields()\n\n\terr := dec.Decode(&req)\n\tif err == nil {\n\t\tif dec.Decode(&struct{}{}) != io.EOF {\n\t\t\treturn req, http.StatusBadRequest, \"invalid_json\", \"body must contain a single JSON object\"\n\t\t}\n\t\treturn req, 0, \"\", \"\"\n\t}\n\n\tvar syntaxErr *json.SyntaxError\n\tvar typeErr *json.UnmarshalTypeError\n\tvar maxErr *http.MaxBytesError\n\tswitch {\n\tcase errors.As(err, &maxErr):\n\t\treturn req, http.StatusRequestEntityTooLarge, \"body_too_large\", fmt.Sprintf(\"body must be at most %d bytes\", maxBodyBytes)\n\tcase errors.Is(err, io.EOF):\n\t\treturn req, http.StatusBadRequest, \"invalid_json\", \"body must not be empty\"\n\tcase errors.As(err, &syntaxErr), errors.Is(err, io.ErrUnexpectedEOF):\n\t\treturn req, http.StatusBadRequest, \"invalid_json\", \"body is not valid JSON\"\n\tcase errors.As(err, &typeErr):\n\t\tif typeErr.Field == \"\" {\n\t\t\treturn req, http.StatusBadRequest, \"invalid_json\", \"body must be a JSON object\"\n\t\t}\n\t\treturn req, http.StatusBadRequest, \"validation_failed\", fmt.Sprintf(\"field %q must be a %s\", typeErr.Field, typeErr.Type)\n\tcase strings.HasPrefix(err.Error(), \"json: unknown field \"):\n\t\tfield := strings.TrimPrefix(err.Error(), \"json: unknown field \")\n\t\treturn req, http.StatusBadRequest, \"unknown_field\", \"unknown field \" + field\n\tdefault:\n\t\treturn req, http.StatusBadRequest, \"invalid_json\", \"body is not valid JSON\"\n\t}\n}\n\nfunc newServer(s *store, limiter *rateLimiter) http.Handler {\n\tmux := http.NewServeMux()\n\tmux.HandleFunc(\"GET /todos\", s.list)\n\tmux.HandleFunc(\"POST /todos\", limiter.middleware(s.create))\n\treturn mux\n}\n\nfunc main() {\n\tlimiter := newRateLimiter(5, 10, 5*time.Minute, nil)\n\tlog.Fatal(http.ListenAndServe(\":8080\", newServer(&store{}, limiter)))\n}\n",
+   "decision_id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "turn": 1
+  },
+  {
+   "seq": 17,
+   "time": "2026-11-15T12:06:26.023Z",
+   "kind": "edit",
+   "tool": "Edit",
+   "file": "main.go",
+   "before": "\tcase !utf8.ValidString(title):\n\t\twriteError(w, http.StatusBadRequest, \"validation_failed\", \"title must be valid UTF-8\")\n\t\treturn\n",
+   "decision_id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "turn": 1
+  },
+  {
+   "seq": 18,
+   "time": "2026-11-15T12:06:29.178Z",
+   "kind": "edit",
+   "tool": "Edit",
+   "file": "ratelimit.go",
+   "before": "\t\t\tsecs := int(math.Ceil(wait.Seconds()))\n\t\t\tif secs < 1 {\n\t\t\t\tsecs = 1\n\t\t\t}",
+   "after": "\t\t\tsecs := max(1, int(math.Ceil(wait.Seconds())))",
+   "decision_id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "turn": 1
+  },
+  {
+   "seq": 19,
+   "time": "2026-11-15T12:06:30.656Z",
+   "kind": "say",
+   "text": "Now the tests.",
+   "turn": 1
+  },
+  {
+   "seq": 20,
+   "time": "2026-11-15T12:06:52.432Z",
+   "kind": "edit",
+   "tool": "Write",
+   "file": "main_test.go",
+   "after": "package main\n\nimport (\n\t\"encoding/json\"\n\t\"net/http\"\n\t\"net/http/httptest\"\n\t\"strings\"\n\t\"testing\"\n\t\"time\"\n)\n\ntype fakeClock struct{ t time.Time }\n\nfunc (c *fakeClock) now() time.Time          { return c.t }\nfunc (c *fakeClock) advance(d time.Duration) { c.t = c.t.Add(d) }\n\nfunc newTestServer() (http.Handler, *fakeClock) {\n\tclk := &fakeClock{t: time.Unix(0, 0)}\n\treturn newServer(&store{}, newRateLimiter(5, 10, 5*time.Minute, clk.now)), clk\n}\n\nfunc postTodo(h http.Handler, ip, contentType, body string) *httptest.ResponseRecorder {\n\treq := httptest.NewRequest(http.MethodPost, \"/todos\", strings.NewReader(body))\n\treq.RemoteAddr = ip + \":1234\"\n\tif contentType != \"\" {\n\t\treq.Header.Set(\"Content-Type\", contentType)\n\t}\n\trec := httptest.NewRecorder()\n\th.ServeHTTP(rec, req)\n\treturn rec\n}\n\nfunc decodeError(t *testing.T, rec *httptest.ResponseRecorder) apiError {\n\tt.Helper()\n\tif ct := rec.Header().Get(\"Content-Type\"); ct != \"application/json\" {\n\t\tt.Fatalf(\"Content-Type = %q, want application/json\", ct)\n\t}\n\tvar body struct {\n\t\tError apiError `json:\"error\"`\n\t}\n\tif err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {\n\t\tt.Fatalf(\"error body is not JSON: %v (%q)\", err, rec.Body.String())\n\t}\n\tif body.Error.Code == \"\" || body.Error.Message == \"\" {\n\t\tt.Fatalf(\"error body missing code/message: %q\", rec.Body.String())\n\t}\n\treturn body.Error\n}\n\nfunc TestCreateTodoSuccess(t *testing.T) {\n\th, _ := newTestServer()\n\trec := postTodo(h, \"10.0.0.1\", \"application/json; charset=utf-8\", `{\"title\":\"  buy milk  \",\"done\":true}`)\n\tif rec.Code != http.StatusCreated {\n\t\tt.Fatalf(\"status = %d, want 201; body %s\", rec.Code, rec.Body)\n\t}\n\tif ct := rec.Header().Get(\"Content-Type\"); ct != \"application/json\" {\n\t\tt.Errorf(\"Content-Type = %q\", ct)\n\t}\n\tvar got Todo\n\tif err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {\n\t\tt.Fatal(err)\n\t}\n\twant := Todo{ID: 1, Title: \"buy milk\", Done: true}\n\tif got != want {\n\t\tt.Errorf(\"got %+v, want %+v\", got, want)\n\t}\n}\n\nfunc TestCreateTodoTitleAtLimit(t *testing.T) {\n\th, _ := newTestServer()\n\t// 200 multi-byte runes is valid: the limit is in characters, not bytes.\n\ttitle := strings.Repeat(\"é\", maxTitleLen)\n\trec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"`+title+`\"}`)\n\tif rec.Code != http.StatusCreated {\n\t\tt.Fatalf(\"status = %d, want 201; body %s\", rec.Code, rec.Body)\n\t}\n}\n\nfunc TestCreateTodoRejectsBadInput(t *testing.T) {\n\ttests := []struct {\n\t\tname        string\n\t\tcontentType string\n\t\tbody        string\n\t\tstatus      int\n\t\tcode        string\n\t}{\n\t\t{\"missing title\", \"application/json\", `{\"done\":true}`, 400, \"validation_failed\"},\n\t\t{\"empty title\", \"application/json\", `{\"title\":\"\"}`, 400, \"validation_failed\"},\n\t\t{\"blank title\", \"application/json\", `{\"title\":\"   \"}`, 400, \"validation_failed\"},\n\t\t{\"null title\", \"application/json\", `{\"title\":null}`, 400, \"validation_failed\"},\n\t\t{\"title too long\", \"application/json\", `{\"title\":\"` + strings.Repeat(\"a\", maxTitleLen+1) + `\"}`, 400, \"validation_failed\"},\n\t\t{\"title wrong type\", \"application/json\", `{\"title\":123}`, 400, \"validation_failed\"},\n\t\t{\"done wrong type\", \"application/json\", `{\"title\":\"x\",\"done\":\"yes\"}`, 400, \"validation_failed\"},\n\t\t{\"unknown field\", \"application/json\", `{\"title\":\"x\",\"priority\":1}`, 400, \"unknown_field\"},\n\t\t{\"client-supplied id\", \"application/json\", `{\"id\":99,\"title\":\"x\"}`, 400, \"unknown_field\"},\n\t\t{\"empty body\", \"application/json\", ``, 400, \"invalid_json\"},\n\t\t{\"malformed json\", \"application/json\", `{\"title\":`, 400, \"invalid_json\"},\n\t\t{\"syntax error\", \"application/json\", `{\"title\" \"x\"}`, 400, \"invalid_json\"},\n\t\t{\"array body\", \"application/json\", `[{\"title\":\"x\"}]`, 400, \"invalid_json\"},\n\t\t{\"trailing data\", \"application/json\", `{\"title\":\"x\"}{\"title\":\"y\"}`, 400, \"invalid_json\"},\n\t\t{\"body too large\", \"application/json\", `{\"title\":\"` + strings.Repeat(\"a\", maxBodyBytes) + `\"}`, 413, \"body_too_large\"},\n\t\t{\"missing content type\", \"\", `{\"title\":\"x\"}`, 415, \"unsupported_media_type\"},\n\t\t{\"wrong content type\", \"text/plain\", `{\"title\":\"x\"}`, 415, \"unsupported_media_type\"},\n\t}\n\tfor _, tc := range tests {\n\t\tt.Run(tc.name, func(t *testing.T) {\n\t\t\th, _ := newTestServer()\n\t\t\trec := postTodo(h, \"10.0.0.1\", tc.contentType, tc.body)\n\t\t\tif rec.Code != tc.status {\n\t\t\t\tt.Fatalf(\"status = %d, want %d; body %s\", rec.Code, tc.status, rec.Body)\n\t\t\t}\n\t\t\tif e := decodeError(t, rec); e.Code != tc.code {\n\t\t\t\tt.Errorf(\"code = %q, want %q (message %q)\", e.Code, tc.code, e.Message)\n\t\t\t}\n\t\t})\n\t}\n}\n\nfunc TestRejectedTodoIsNotStored(t *testing.T) {\n\th, _ := newTestServer()\n\tpostTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"\"}`)\n\trec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"ok\"}`)\n\tvar got Todo\n\tjson.Unmarshal(rec.Body.Bytes(), &got)\n\tif got.ID != 1 {\n\t\tt.Errorf(\"ID = %d, want 1 (rejected request must not consume an ID)\", got.ID)\n\t}\n}\n\nfunc TestCreateTodoRateLimited(t *testing.T) {\n\th, clk := newTestServer()\n\tfor i := range 10 {\n\t\tif rec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"x\"}`); rec.Code != http.StatusCreated {\n\t\t\tt.Fatalf(\"request %d: status = %d, want 201\", i+1, rec.Code)\n\t\t}\n\t}\n\n\trec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"x\"}`)\n\tif rec.Code != http.StatusTooManyRequests {\n\t\tt.Fatalf(\"status = %d, want 429\", rec.Code)\n\t}\n\tif ra := rec.Header().Get(\"Retry-After\"); ra != \"1\" {\n\t\tt.Errorf(\"Retry-After = %q, want 1\", ra)\n\t}\n\tif e := decodeError(t, rec); e.Code != \"rate_limited\" {\n\t\tt.Errorf(\"code = %q, want rate_limited\", e.Code)\n\t}\n\n\t// Another client is unaffected.\n\tif rec := postTodo(h, \"10.0.0.2\", \"application/json\", `{\"title\":\"x\"}`); rec.Code != http.StatusCreated {\n\t\tt.Errorf(\"other client: status = %d, want 201\", rec.Code)\n\t}\n\n\t// At 5 tokens/s, one token is back after 200ms.\n\tclk.advance(200 * time.Millisecond)\n\tif rec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"x\"}`); rec.Code != http.StatusCreated {\n\t\tt.Errorf(\"after refill: status = %d, want 201\", rec.Code)\n\t}\n\tif rec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"x\"}`); rec.Code != http.StatusTooManyRequests {\n\t\tt.Errorf(\"after one refill token: status = %d, want 429\", rec.Code)\n\t}\n}\n\nfunc TestInvalidRequestsCountTowardRateLimit(t *testing.T) {\n\th, _ := newTestServer()\n\tfor range 10 {\n\t\tpostTodo(h, \"10.0.0.1\", \"application/json\", `garbage`)\n\t}\n\tif rec := postTodo(h, \"10.0.0.1\", \"application/json\", `{\"title\":\"x\"}`); rec.Code != http.StatusTooManyRequests {\n\t\tt.Errorf(\"status = %d, want 429\", rec.Code)\n\t}\n}\n",
+   "new_file": true,
+   "decision_id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "turn": 1
+  },
+  {
+   "seq": 21,
+   "time": "2026-11-15T12:07:00.055Z",
+   "kind": "edit",
+   "tool": "Write",
+   "file": "ratelimit_test.go",
+   "after": "package main\n\nimport (\n\t\"net/http/httptest\"\n\t\"testing\"\n\t\"time\"\n)\n\nfunc TestRateLimiterBurstCappedAfterIdle(t *testing.T) {\n\tclk := &fakeClock{t: time.Unix(0, 0)}\n\tl := newRateLimiter(5, 3, time.Hour, clk.now)\n\tfor range 3 {\n\t\tl.allow(\"a\")\n\t}\n\tclk.advance(10 * time.Minute)\n\tfor i := range 3 {\n\t\tif ok, _ := l.allow(\"a\"); !ok {\n\t\t\tt.Fatalf(\"request %d after idle denied\", i+1)\n\t\t}\n\t}\n\tif ok, wait := l.allow(\"a\"); ok || wait != 200*time.Millisecond {\n\t\tt.Errorf(\"allow = %v, %v; want false, 200ms (tokens must not exceed burst)\", ok, wait)\n\t}\n}\n\nfunc TestRateLimiterEvictsIdleBuckets(t *testing.T) {\n\tclk := &fakeClock{t: time.Unix(0, 0)}\n\tl := newRateLimiter(5, 10, time.Minute, clk.now)\n\tl.allow(\"a\")\n\tl.allow(\"b\")\n\tclk.advance(30 * time.Second)\n\tl.allow(\"b\")\n\tclk.advance(31 * time.Second)\n\tl.allow(\"c\") // triggers a sweep: a is idle 61s, b only 31s\n\n\tif _, ok := l.buckets[\"a\"]; ok {\n\t\tt.Error(\"idle bucket a was not evicted\")\n\t}\n\tif _, ok := l.buckets[\"b\"]; !ok {\n\t\tt.Error(\"recently used bucket b was evicted\")\n\t}\n\tif len(l.buckets) != 2 {\n\t\tt.Errorf(\"len(buckets) = %d, want 2\", len(l.buckets))\n\t}\n}\n\nfunc TestClientIP(t *testing.T) {\n\ttests := []struct{ remote, xff, want string }{\n\t\t{\"192.0.2.1:5555\", \"\", \"192.0.2.1\"},\n\t\t{\"[2001:db8::1]:5555\", \"\", \"2001:db8::1\"},\n\t\t{\"192.0.2.1:5555\", \"203.0.113.9\", \"192.0.2.1\"}, // spoofable header ignored\n\t\t{\"no-port\", \"\", \"no-port\"},\n\t}\n\tfor _, tc := range tests {\n\t\tr := httptest.NewRequest(\"POST\", \"/todos\", nil)\n\t\tr.RemoteAddr = tc.remote\n\t\tif tc.xff != \"\" {\n\t\t\tr.Header.Set(\"X-Forwarded-For\", tc.xff)\n\t\t}\n\t\tif got := clientIP(r); got != tc.want {\n\t\t\tt.Errorf(\"clientIP(%q) = %q, want %q\", tc.remote, got, tc.want)\n\t\t}\n\t}\n}\n",
+   "new_file": true,
+   "decision_id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "turn": 1
+  },
+  {
+   "seq": 22,
+   "time": "2026-11-15T12:07:07.037Z",
+   "kind": "say",
+   "text": "Code and tests are written. Running the test suite:",
+   "turn": 1
+  },
+  {
+   "seq": 23,
+   "time": "2026-11-15T12:07:08.383Z",
+   "kind": "command",
+   "text": "go vet ./... && go test -race -count=1 ./...",
+   "tool": "Bash",
+   "turn": 1
+  },
+  {
+   "seq": 24,
+   "time": "2026-11-15T12:07:14.719Z",
+   "kind": "say",
+   "text": "Everything passes, including the race detector. Now I'll record before/after demos for reviewers.",
+   "turn": 1
+  },
+  {
+   "seq": 25,
+   "time": "2026-11-15T12:07:17.679Z",
+   "kind": "behavior",
+   "text": "Invalid POST /todos bodies are rejected",
+   "tool": "mcp__grasp__show_behavior",
+   "decision_id": "toolu_01LY8FKy8391fmTQiDvrofQZ",
+   "turn": 1
+  },
+  {
+   "seq": 26,
+   "time": "2026-11-15T12:07:20.591Z",
+   "kind": "behavior",
+   "text": "Burst past 10 requests gets 429",
+   "tool": "mcp__grasp__show_behavior",
+   "decision_id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "turn": 1
+  },
+  {
+   "seq": 27,
+   "time": "2026-11-15T12:07:33.934Z",
+   "kind": "say",
+   "text": "POST /todos now validates its input, returns JSON errors, and rate-limits each client, all with the standard library only. `go vet` is clean and all 26 tests pass under `-race`. I haven't committed anything.\n\n**Validation** (`main.go`)\n- **Title:** required. It's trimmed first, so `\"   \"` counts as missing, and stored trimmed. The 200-character limit counts characters rather than bytes, so 200 × `é` is accepted.\n- **Unknown fields:** rejected. I decode into a separate request type that only has `title` and `done`, so a client-sent `id` is also rejected instead of quietly ignored.\n- **Body:** must be exactly one JSON object of at most 1 MiB. Content-Type must be `application/json`, otherwise the response is 415.\n\n**Errors** always look like `{\"error\":{\"code\":\"...\",\"message\":\"...\"}}` with a JSON content type. The codes are `validation_failed`, `unknown_field`, `invalid_json`, `body_too_large` (413), `unsupported_media_type` (415) and `rate_limited` (429).\n\n**Rate limiting** (`ratelimit.go`): each client IP can send a burst of 10 requests, refilled at 5 per second. Over the limit it returns 429 with a `Retry-After` header. Idle clients are dropped after 5 minutes so memory doesn't keep growing. Rejected requests also count toward the limit.\n\n**Tests** (`main_test.go`, `ratelimit_test.go`) cover every rejection case, the success path, refill, per-IP isolation and cleanup. They use a fake clock, so they don't sleep.\n\n**grasp:** no earlier feedback was waiting. I recorded four decisions and two before/after demos:\n- **Bad bodies:** they returned 201 and stored junk like `{\"id\":1,\"title\":\"\"}`; now they get a 400 with an error code.\n- **Rate limit:** requests 11 and 12 of a burst now get 429; before, every request returned 201.\n\n**Before you deploy:**\n- **Behind a proxy or load balancer,** every client shares the proxy's IP and therefore one limit. I didn't trust `X-Forwarded-For` because clients can fake it. That needs handling for trusted proxies first.\n- **The limit is per instance,** so with several replicas the real total is that many times higher.\n- **Clients that send extra fields or no Content-Type** will start getting 400 or 415.\n- **The server has no read or write timeouts** (`ReadHeaderTimeout` etc.), so slow clients can tie up connections. I left that out to keep this change to POST /todos; it's a small follow-up.",
+   "turn": 1
+  }
+ ],
+ "decisions": [
+  {
+   "id": "toolu_01LY8FKy8391fmTQiDvrofQZ",
+   "seq": 11,
+   "turn": 1,
+   "title": "Strict validation of POST /todos body",
+   "kind": "api",
+   "why": "Right now the handler ignores decode errors and stores whatever arrives. Decoding into a separate request struct {title, done} with DisallowUnknownFields means id and any typo'd field get rejected. Title is trimmed and must be 1–200 characters (counted as runes, not bytes). Body is capped at 1 MiB, must be a single JSON object, and must be sent as application/json.",
+   "alternatives": [
+    "Decode straight into Todo (then a client could send id, and 'id' wouldn't count as unknown)",
+    "Count the 200 limit in bytes (would reject valid non-ASCII titles that are under 200 characters)",
+    "Don't check Content-Type (more lenient, but form posts and other content types slip through)"
+   ],
+   "risk": "Clients that currently send extra fields, or that leave out Content-Type, will start getting 400/415.",
+   "files": [
+    "main.go"
+   ],
+   "edits": [
+    16
+   ]
+  },
+  {
+   "id": "toolu_01TLwWuP5WRkfpSF6Cfvny46",
+   "seq": 12,
+   "turn": 1,
+   "title": "Uniform JSON error envelope",
+   "kind": "api",
+   "why": "Every error from POST /todos returns {\"error\":{\"code\":\"...\",\"message\":\"...\"}} with Content-Type application/json, so clients can branch on a stable code and don't have to parse text. Success responses get the JSON content type too.",
+   "alternatives": [
+    "RFC 7807 problem+json (more fields than this API needs)",
+    "http.Error plain text (not JSON)"
+   ],
+   "risk": "Low. The error shape becomes part of the API contract.",
+   "files": [
+    "main.go"
+   ],
+   "edits": [
+    16
+   ]
+  },
+  {
+   "id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "seq": 13,
+   "turn": 1,
+   "title": "Per-IP token bucket on POST /todos",
+   "kind": "security",
+   "why": "Each client gets a token bucket keyed by the RemoteAddr host: 5 requests/second with a burst of 10. Over the limit it returns 429 with Retry-After. Buckets idle for more than a few minutes are swept so memory can't grow without bound. A clock can be injected so tests are deterministic.",
+   "alternatives": [
+    "golang.org/x/time/rate (not stdlib; user asked for stdlib only)",
+    "Key on X-Forwarded-For (clients can spoof it unless we're behind a trusted proxy)",
+    "Fixed-window counter (allows 2x bursts at window edges)"
+   ],
+   "risk": "Behind a load balancer or reverse proxy, every request shares the proxy's IP, so all clients would share one bucket. That needs trusted-proxy header handling before deploying behind one. State lives in memory per instance, so the limit applies per replica, not globally.",
+   "files": [
+    "ratelimit.go",
+    "main.go"
+   ],
+   "edits": [
+    15,
+    16,
+    18
+   ]
+  },
+  {
+   "id": "toolu_01LDmi773Wyzhu6nSDjjXQ43",
+   "seq": 14,
+   "turn": 1,
+   "title": "Handler tests with httptest and fake clock",
+   "kind": "testing",
+   "why": "Table-driven tests run against the real mux (newServer) using httptest. They cover each validation rule, the error envelope, and rate limiting (burst, 429 plus Retry-After, refill, per-IP isolation, eviction). A fake clock means no sleeps.",
+   "alternatives": [
+    "Spin up a real listener (slower, no added coverage)"
+   ],
+   "risk": "None significant.",
+   "files": [
+    "main_test.go",
+    "ratelimit_test.go",
+    "main.go"
+   ],
+   "edits": [
+    16,
+    17,
+    20,
+    21
+   ]
+  }
+ ],
+ "behaviors": [
+  {
+   "id": "toolu_01VRvNJGQFd8Er2cekj6eMRZ",
+   "seq": 25,
+   "title": "Invalid POST /todos bodies are rejected",
+   "command": "go build -o /tmp/todoapi_demo . && (/tmp/todoapi_demo & echo $! > /tmp/todoapi_demo.pid); sleep 1; for b in '{\"done\":true}' '{\"title\":\"x\",\"priority\":1}' '{\"id\":99,\"title\":\"x\"}' '{\"title\":'; do printf '%s -> ' \"$b\"; curl -s -w ' [%{http_code}]\\n' -H 'Content-Type: application/json' -d \"$b\" localhost:8080/todos; done; kill $(cat /tmp/todoapi_demo.pid)",
+   "expect": "Each body gets a 400 with a JSON error (validation_failed, unknown_field, unknown_field, invalid_json). The old code returns 201 and stores junk todos.",
+   "decision": "Strict validation of POST /todos body",
+   "decision_id": "toolu_01LY8FKy8391fmTQiDvrofQZ",
+   "base": "700e991e08049590e6ed3fc2795261df01b582f9",
+   "before": {
+    "output": "{\"done\":true} -> {\"id\":1,\"title\":\"\",\"done\":true}\n [201]\n{\"title\":\"x\",\"priority\":1} -> {\"id\":2,\"title\":\"x\",\"done\":false}\n [201]\n{\"id\":99,\"title\":\"x\"} -> {\"id\":3,\"title\":\"x\",\"done\":false}\n [201]\n{\"title\": -> {\"id\":4,\"title\":\"\",\"done\":false}\n [201]",
+    "exit": 0,
+    "millis": 1646
+   },
+   "after": {
+    "output": "{\"done\":true} -> {\"error\":{\"code\":\"validation_failed\",\"message\":\"title is required\"}}\n [400]\n{\"title\":\"x\",\"priority\":1} -> {\"error\":{\"code\":\"unknown_field\",\"message\":\"unknown field \\\"priority\\\"\"}}\n [400]\n{\"id\":99,\"title\":\"x\"} -> {\"error\":{\"code\":\"unknown_field\",\"message\":\"unknown field \\\"id\\\"\"}}\n [400]\n{\"title\": -> {\"error\":{\"code\":\"invalid_json\",\"message\":\"body is not valid JSON\"}}\n [400]",
+    "exit": 0,
+    "millis": 1428
+   },
+   "changed": true
+  },
+  {
+   "id": "toolu_011pUgoJ7ZkJDPZbAyqxGgWb",
+   "seq": 26,
+   "title": "Burst past 10 requests gets 429",
+   "command": "go build -o /tmp/todoapi_demo . && (/tmp/todoapi_demo & echo $! > /tmp/todoapi_demo.pid); sleep 1; for i in $(seq 1 12); do curl -s -o /dev/null -w '%{http_code} ' -H 'Content-Type: application/json' -d '{\"title\":\"x\"}' localhost:8080/todos; done; echo; curl -s -i -H 'Content-Type: application/json' -d '{\"title\":\"x\"}' localhost:8080/todos | grep -iE '^HTTP|^retry-after|error'; kill $(cat /tmp/todoapi_demo.pid)",
+   "expect": "The first 10 requests return 201 and the rest 429. The final request shows HTTP 429, Retry-After: 1, and a rate_limited JSON error. The old code returns 201 every time.",
+   "decision": "Per-IP token bucket on POST /todos",
+   "decision_id": "toolu_016vAuLHMxjhZ7C6M3GiaBJB",
+   "base": "700e991e08049590e6ed3fc2795261df01b582f9",
+   "before": {
+    "output": "201 201 201 201 201 201 201 201 201 201 201 201 \nHTTP/1.1 201 Created\r",
+    "exit": 0,
+    "millis": 1433
+   },
+   "after": {
+    "output": "201 201 201 201 201 201 201 201 201 201 429 429 \nHTTP/1.1 429 Too Many Requests\r\nRetry-After: 1\r\n{\"error\":{\"code\":\"rate_limited\",\"message\":\"too many requests, retry later\"}}",
+    "exit": 0,
+    "millis": 1499
+   },
+   "changed": true
+  }
+ ],
+ "unexplained": null
+}
